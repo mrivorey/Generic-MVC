@@ -3,17 +3,17 @@ services:
     build: .
     container_name: app
     ports:
-      - "8088:8088"
+      - "${APP_PORT}:8088"
     volumes:
       - .:/var/www/html
     environment:
-      - PHP_DISPLAY_ERRORS=0
-      - PHP_ERROR_REPORTING=E_ALL
-      - DB_HOST=mysql
-      - DB_PORT=3306
-      - DB_NAME=app
-      - DB_USERNAME=app
-      - DB_PASSWORD=app_secret
+      - PHP_DISPLAY_ERRORS=${PHP_DISPLAY_ERRORS}
+      - PHP_ERROR_REPORTING=${PHP_ERROR_REPORTING}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
     depends_on:
       mysql:
         condition: service_healthy
@@ -25,10 +25,10 @@ services:
     ports:
       - "3307:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: root_secret
-      MYSQL_DATABASE: app
-      MYSQL_USER: app
-      MYSQL_PASSWORD: app_secret
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
       - ./database:/docker-entrypoint-initdb.d
@@ -43,7 +43,7 @@ services:
     image: adminer
     container_name: adminer
     ports:
-      - "8081:8080"
+      - "${ADMINER_PORT}:8080"
     depends_on:
       - mysql
     restart: unless-stopped
