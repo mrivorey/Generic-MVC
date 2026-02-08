@@ -1,0 +1,25 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Tests
+tests/
+
+# Development files
+.env
+.env.example
+
+# Logs and temporary files
+*.log
+storage/sessions/*
+!storage/sessions/.gitkeep

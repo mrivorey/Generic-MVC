@@ -1,0 +1,5 @@
+# Aider Configuration
+# Read CLAUDE.md in the project root for complete project documentation.
+
+read:
+  - CLAUDE.md

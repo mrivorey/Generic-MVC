@@ -1,0 +1,81 @@
+/* App - Dark Theme Styles */
+
+/* Body & Layout */
+body {
+    background-color: #1a1a1a;
+    min-height: 100vh;
+}
+
+/* Navbar Customizations */
+.navbar {
+    padding: 0.5rem 1rem;
+}
+
+.navbar-brand {
+    font-weight: 600;
+}
+
+/* Card Styling for Auth Pages */
+.card {
+    background-color: #212529;
+    border: 1px solid #30363d;
+}
+
+.card-header {
+    background-color: #2c3034;
+    border-bottom: 1px solid #30363d;
+}
+
+/* Form Styling */
+.form-control {
+    background-color: #1a1a1a;
+    border-color: #30363d;
+    color: #fff;
+}
+
+.form-control:focus {
+    background-color: #1a1a1a;
+    border-color: #0d6efd;
+    color: #fff;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.form-label {
+    color: #adb5bd;
+}
+
+.form-text {
+    color: #6c757d;
+}
+
+/* Dropdown Menu Dark Theme */
+.dropdown-menu {
+    background-color: #212529;
+    border-color: #30363d;
+}
+
+.dropdown-item {
+    color: #adb5bd;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background-color: #2c3034;
+    color: #fff;
+}
+
+.dropdown-item.active {
+    background-color: #0d6efd;
+    color: #fff;
+}
+
+.dropdown-divider {
+    border-color: #30363d;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 576px) {
+    .navbar-brand {
+        font-size: 1rem;
+    }
+}

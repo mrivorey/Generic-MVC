@@ -1,0 +1,11 @@
+# Coding Conventions
+
+This file exists for AI agents that look for CONVENTIONS.md.
+
+**Read CLAUDE.md** in the project root for complete project documentation, architecture, and coding conventions.
+
+## Quick Summary
+- PHP 8.5 MVC application (no framework)
+- MySQL 8.0 database, Bootstrap 5 dark theme
+- Docker: app + mysql + adminer
+- PSR-4 autoloading under App\ namespace
