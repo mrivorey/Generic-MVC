@@ -7,6 +7,10 @@
 # Storage (runtime data)
 /storage/sessions/*
 !storage/sessions/.gitkeep
+/storage/cache/*
+!storage/cache/.gitkeep
+/storage/logs/*
+!storage/logs/.gitkeep
 
 # IDE
 .idea/

@@ -39,4 +39,6 @@ EXPOSE 8088
 
 # Set proper permissions for storage
 RUN mkdir -p /var/www/html/storage/sessions \
+             /var/www/html/storage/cache \
+             /var/www/html/storage/logs \
     && chown -R www-data:www-data /var/www/html/storage

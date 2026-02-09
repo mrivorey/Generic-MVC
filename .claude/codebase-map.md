@@ -21,6 +21,7 @@
 [CORE] Flash | src/Core/Flash.php | static class | set(type, message), get(type), all(), has(type), setOldInput(data), old(key, default), clearOldInput() | session keys: _flash, _old_input | types: success, error, warning, info
 [CORE] Model | src/Core/Model.php | abstract base model | static methods: find(id), findBy(column, value), where(column, value), all(orderBy), create(data), update(id, data), delete(id), query(sql, bindings) | $table, $fillable | mass-assignment protection
 [CORE] Validator | src/Core/Validator.php | static factory | make(data, rules)->validate() | fails(), errors(), validated() | rules: required, string, email, min:N, max:N, numeric, integer, confirmed, unique:table,column[,except_id], in:val1,val2 | stores errors in _validation_errors session
+[CORE] FileSystem | src/Core/FileSystem.php | static file I/O utility | write(path, data), read(path), append(path, data), delete(path), exists(path), setStorageRoot(path), reset() | all paths relative to storage root | path traversal protection via realpath+str_starts_with | null byte rejection | auto-mkdir on write/append | LOCK_EX on writes | lazy-loads root from config/app.php paths.storage
 [CORE] FormBuilder | src/Core/FormBuilder.php | static form helper | open(attributes), close(), text(), email(), password(), textarea(), number(), hidden(), select(), checkbox(), radio(), submit() | auto CSRF, method spoofing, Bootstrap 5 markup, validation error states, old input repopulation
 
 ## MODELS
@@ -123,6 +124,8 @@
 ## STORAGE
 
 [STORAGE] sessions/ | storage/sessions/ | PHP session files | one file per session ID | configured in public/index.php
+[STORAGE] cache/ | storage/cache/ | application cache files | managed via FileSystem class
+[STORAGE] logs/ | storage/logs/ | application log files | managed via FileSystem class
 
 ## SCRIPTS
 
