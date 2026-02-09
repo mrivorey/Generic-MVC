@@ -52,12 +52,7 @@ Router::group(['prefix' => '/admin', 'middleware' => ['auth', 'role:admin']], fu
     Router::post('/roles/{id}/delete', [RoleController::class, 'destroy'])->name('admin.roles.destroy')->middleware('csrf')->where('id', '[0-9]+');
 });
 
-// API v1 preflight (OPTIONS must not require auth)
-Router::group(['prefix' => '/api/v1', 'middleware' => ['cors']], function () {
-    Router::match(['OPTIONS'], '/{path}', fn() => '')->where('path', '.*');
-});
-
-// API v1 routes
+// API v1 routes (cors runs first — handles OPTIONS preflight before auth)
 Router::group(['prefix' => '/api/v1', 'middleware' => ['cors', 'api_auth', 'api_rate_limit']], function () {
     Router::get('/user', [UserApiController::class, 'me'])->name('api.user');
 });
