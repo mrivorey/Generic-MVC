@@ -9,6 +9,8 @@ class Logger
     /** @var array<string, LogChannel> */
     private static array $channels = [];
 
+    private static bool $cleanupRanThisRequest = false;
+
     private const LEVELS = [
         'debug'     => 100,
         'info'      => 200,
@@ -80,7 +82,9 @@ class Logger
 
         $line = self::formatLine($level, $message, $context, $channel, $config['timezone']);
 
-        FileSystem::append("logs/{$channel}.log", $line);
+        FileSystem::append(self::formatLogPath($channel, $config), $line);
+
+        self::maybeCleanup($channel, $config);
     }
 
     public static function setConfig(array $config): void
@@ -92,6 +96,55 @@ class Logger
     {
         self::$config = null;
         self::$channels = [];
+        self::$cleanupRanThisRequest = false;
+    }
+
+    private static function formatLogPath(string $channel, array $config): string
+    {
+        $rotation = $config['rotation'] ?? 'single';
+
+        if ($rotation === 'daily') {
+            $date = (new \DateTimeImmutable('now', new \DateTimeZone($config['timezone'] ?? 'UTC')))->format('Y-m-d');
+            return "logs/{$channel}-{$date}.log";
+        }
+
+        return "logs/{$channel}.log";
+    }
+
+    private static function maybeCleanup(string $channel, array $config): void
+    {
+        if (self::$cleanupRanThisRequest) {
+            return;
+        }
+
+        self::$cleanupRanThisRequest = true;
+
+        $rotation = $config['rotation'] ?? 'single';
+
+        if ($rotation !== 'daily') {
+            return;
+        }
+
+        $maxFiles = $config['max_files'] ?? 14;
+        $logsDir = FileSystem::getStorageRoot() . '/logs';
+        $files = @scandir($logsDir);
+
+        if ($files === false) {
+            return;
+        }
+
+        $pattern = '/^' . preg_quote($channel, '/') . '-(\d{4}-\d{2}-\d{2})\.log$/';
+        $cutoff = (new \DateTimeImmutable('now', new \DateTimeZone($config['timezone'] ?? 'UTC')))
+            ->modify("-{$maxFiles} days")
+            ->format('Y-m-d');
+
+        foreach ($files as $file) {
+            if (preg_match($pattern, $file, $matches)) {
+                if ($matches[1] < $cutoff) {
+                    @unlink($logsDir . '/' . $file);
+                }
+            }
+        }
     }
 
     private static function shouldLog(string $level, string $channel): bool
@@ -133,6 +186,8 @@ class Logger
             'min_level' => $logging['min_level'] ?? 'debug',
             'channels' => $logging['channels'] ?? [],
             'timezone' => $appConfig['timezone'] ?? 'UTC',
+            'rotation' => $logging['rotation'] ?? 'single',
+            'max_files' => $logging['max_files'] ?? 14,
         ];
 
         return self::$config;

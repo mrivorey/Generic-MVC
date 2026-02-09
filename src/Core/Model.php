@@ -6,12 +6,15 @@ abstract class Model
 {
     protected static string $table;
     protected static array $fillable = [];
+    protected static bool $softDeletes = false;
+    private static bool $includeTrashed = false;
+    private static bool $onlyTrashed = false;
 
     public static function find(int $id): ?array
     {
         $pdo = Database::getConnection();
         $table = static::$table;
-        $stmt = $pdo->prepare("SELECT * FROM `{$table}` WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT * FROM `{$table}` WHERE id = ?" . static::softDeleteScope());
         $stmt->execute([$id]);
         $row = $stmt->fetch();
         return $row ?: null;
@@ -21,7 +24,7 @@ abstract class Model
     {
         $pdo = Database::getConnection();
         $table = static::$table;
-        $stmt = $pdo->prepare("SELECT * FROM `{$table}` WHERE `{$column}` = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT * FROM `{$table}` WHERE `{$column}` = ?" . static::softDeleteScope() . " LIMIT 1");
         $stmt->execute([$value]);
         $row = $stmt->fetch();
         return $row ?: null;
@@ -31,7 +34,7 @@ abstract class Model
     {
         $pdo = Database::getConnection();
         $table = static::$table;
-        $stmt = $pdo->prepare("SELECT * FROM `{$table}` WHERE `{$column}` = ?");
+        $stmt = $pdo->prepare("SELECT * FROM `{$table}` WHERE `{$column}` = ?" . static::softDeleteScope());
         $stmt->execute([$value]);
         return $stmt->fetchAll();
     }
@@ -40,7 +43,7 @@ abstract class Model
     {
         $pdo = Database::getConnection();
         $table = static::$table;
-        $sql = "SELECT * FROM `{$table}`";
+        $sql = "SELECT * FROM `{$table}`" . static::softDeleteWhere();
         if ($orderBy) {
             $sql .= " ORDER BY {$orderBy}";
         }
@@ -79,8 +82,19 @@ abstract class Model
     {
         $pdo = Database::getConnection();
         $table = static::$table;
+
+        if (static::$softDeletes) {
+            $stmt = $pdo->prepare("UPDATE `{$table}` SET deleted_at = NOW() WHERE id = ?");
+            return $stmt->execute([$id]);
+        }
+
         $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE id = ?");
         return $stmt->execute([$id]);
+    }
+
+    public static function paginate(int $perPage = 15, array $conditions = [], ?string $orderBy = null): PaginationResult
+    {
+        return Paginator::paginate(static::$table, $perPage, $conditions, $orderBy);
     }
 
     public static function query(string $sql, array $bindings = []): array
@@ -89,6 +103,70 @@ abstract class Model
         $stmt = $pdo->prepare($sql);
         $stmt->execute($bindings);
         return $stmt->fetchAll();
+    }
+
+    public static function withTrashed(): void
+    {
+        static::$includeTrashed = true;
+    }
+
+    public static function onlyTrashed(): void
+    {
+        static::$onlyTrashed = true;
+    }
+
+    public static function restore(int $id): bool
+    {
+        $pdo = Database::getConnection();
+        $table = static::$table;
+        $stmt = $pdo->prepare("UPDATE `{$table}` SET deleted_at = NULL WHERE id = ?");
+        return $stmt->execute([$id]);
+    }
+
+    public static function forceDelete(int $id): bool
+    {
+        $pdo = Database::getConnection();
+        $table = static::$table;
+        $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE id = ?");
+        return $stmt->execute([$id]);
+    }
+
+    private static function softDeleteScope(): string
+    {
+        if (!static::$softDeletes) {
+            return '';
+        }
+
+        if (static::$includeTrashed) {
+            static::$includeTrashed = false;
+            return '';
+        }
+
+        if (static::$onlyTrashed) {
+            static::$onlyTrashed = false;
+            return ' AND deleted_at IS NOT NULL';
+        }
+
+        return ' AND deleted_at IS NULL';
+    }
+
+    private static function softDeleteWhere(): string
+    {
+        if (!static::$softDeletes) {
+            return '';
+        }
+
+        if (static::$includeTrashed) {
+            static::$includeTrashed = false;
+            return '';
+        }
+
+        if (static::$onlyTrashed) {
+            static::$onlyTrashed = false;
+            return ' WHERE deleted_at IS NOT NULL';
+        }
+
+        return ' WHERE deleted_at IS NULL';
     }
 
     protected static function filterFillable(array $data): array

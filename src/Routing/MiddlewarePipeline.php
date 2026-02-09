@@ -3,6 +3,7 @@
 namespace App\Routing;
 
 use App\Middleware\AuthMiddleware;
+use App\Middleware\CorsMiddleware;
 use App\Middleware\CsrfMiddleware;
 use App\Middleware\ApiAuthMiddleware;
 use App\Middleware\ApiRateLimitMiddleware;
@@ -11,6 +12,7 @@ class MiddlewarePipeline
 {
     private static array $aliases = [
         'auth' => [AuthMiddleware::class, 'requireAuth'],
+        'cors' => [CorsMiddleware::class, 'handle'],
         'csrf' => [CsrfMiddleware::class, 'verify'],
         'role' => [AuthMiddleware::class, 'requireRole'],
         'permission' => [AuthMiddleware::class, 'requirePermission'],

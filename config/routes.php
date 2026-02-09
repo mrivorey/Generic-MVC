@@ -52,7 +52,12 @@ Router::group(['prefix' => '/admin', 'middleware' => ['auth', 'role:admin']], fu
     Router::post('/roles/{id}/delete', [RoleController::class, 'destroy'])->name('admin.roles.destroy')->middleware('csrf')->where('id', '[0-9]+');
 });
 
+// API v1 preflight (OPTIONS must not require auth)
+Router::group(['prefix' => '/api/v1', 'middleware' => ['cors']], function () {
+    Router::match(['OPTIONS'], '/{path}', fn() => '')->where('path', '.*');
+});
+
 // API v1 routes
-Router::group(['prefix' => '/api/v1', 'middleware' => ['api_auth', 'api_rate_limit']], function () {
+Router::group(['prefix' => '/api/v1', 'middleware' => ['cors', 'api_auth', 'api_rate_limit']], function () {
     Router::get('/user', [UserApiController::class, 'me'])->name('api.user');
 });

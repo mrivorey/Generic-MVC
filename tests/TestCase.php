@@ -2,15 +2,20 @@
 
 namespace Tests;
 
+use App\Core\Cache;
 use App\Core\ErrorHandler;
 use App\Core\FileSystem;
+use App\Core\FileUpload;
 use App\Core\FormBuilder;
 use App\Core\Flash;
 use App\Core\Logger;
 use App\Core\Mailer;
+use App\Core\Paginator;
+use App\Middleware\CorsMiddleware;
 use App\Middleware\CsrfMiddleware;
 use App\Middleware\RateLimitMiddleware;
 use App\Middleware\RequestLogMiddleware;
+use App\Middleware\SecurityHeadersMiddleware;
 use App\Routing\Router;
 use PHPUnit\Framework\TestCase as BaseTestCase;
 
@@ -54,6 +59,11 @@ abstract class TestCase extends BaseTestCase
         FormBuilder::resetState();
         CsrfMiddleware::resetConfig();
         RateLimitMiddleware::resetConfig();
+        SecurityHeadersMiddleware::resetConfig();
+        Paginator::reset();
+        FileUpload::reset();
+        Cache::reset();
+        CorsMiddleware::resetConfig();
     }
 
     protected function tearDown(): void

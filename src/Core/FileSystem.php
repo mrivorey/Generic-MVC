@@ -65,6 +65,11 @@ class FileSystem
         return file_exists($resolved);
     }
 
+    public static function getStorageRoot(): string
+    {
+        return self::resolveRoot();
+    }
+
     public static function setStorageRoot(string $path): void
     {
         self::$storageRoot = $path;

@@ -11,8 +11,9 @@ $config = require dirname(__DIR__) . '/config/app.php';
 // Set timezone
 date_default_timezone_set($config['timezone']);
 
-// Register error handler and request logging
+// Register error handler, security headers, and request logging
 \App\Core\ErrorHandler::register($config);
+\App\Middleware\SecurityHeadersMiddleware::apply();
 \App\Middleware\RequestLogMiddleware::start();
 
 // Configure session

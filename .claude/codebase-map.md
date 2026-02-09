@@ -16,18 +16,24 @@
 
 ## CORE
 
-[CORE] Database | src/Core/Database.php | PDO singleton | getConnection(), reset(), setConnection(PDO) | reads config/app.php database section | ERRMODE_EXCEPTION, FETCH_ASSOC, EMULATE_PREPARES=false | MySQL via pdo_mysql
+[CORE] Database | src/Core/Database.php | PDO singleton | getConnection(), reset(), setConnection(PDO), transaction(callable), beginTransaction(), commit(), rollBack(), getTransactionDepth() | reads config/app.php database section | ERRMODE_EXCEPTION, FETCH_ASSOC, EMULATE_PREPARES=false | MySQL via pdo_mysql | nested transaction support via SAVEPOINTs ($transactionDepth tracking) | transaction() auto-commits on success, rolls back + rethrows on Throwable
 [CORE] ExitTrap | src/Core/ExitTrap.php | static class | enableTestMode(), disableTestMode(), exit(code) | in production calls exit(), in test mode throws ExitException
 [CORE] ExitException | src/Core/ExitException.php | extends RuntimeException | getExitCode() | thrown by ExitTrap in test mode
 [CORE] Flash | src/Core/Flash.php | static class | set(type, message), get(type), all(), has(type), setOldInput(data), old(key, default), clearOldInput() | session keys: _flash, _old_input | types: success, error, warning, info
-[CORE] Model | src/Core/Model.php | abstract base model | static methods: find(id), findBy(column, value), where(column, value), all(orderBy), create(data), update(id, data), delete(id), query(sql, bindings) | $table, $fillable | mass-assignment protection
+[CORE] Model | src/Core/Model.php | abstract base model | static methods: find(id), findBy(column, value), where(column, value), all(orderBy), create(data), update(id, data), delete(id), query(sql, bindings), paginate(perPage, conditions, orderBy) | $table, $fillable | mass-assignment protection | opt-in soft deletes ($softDeletes=true): delete() sets deleted_at, queries auto-filter, withTrashed()/onlyTrashed() flags (auto-reset), restore(id), forceDelete(id)
 [CORE] Validator | src/Core/Validator.php | static factory | make(data, rules)->validate() | fails(), errors(), validated() | rules: required, string, email, min:N, max:N, numeric, integer, confirmed, unique:table,column[,except_id], in:val1,val2 | stores errors in _validation_errors session
 [CORE] FileSystem | src/Core/FileSystem.php | static file I/O utility | write(path, data), read(path), append(path, data), delete(path), exists(path), setStorageRoot(path), reset() | all paths relative to storage root | path traversal protection via realpath+str_starts_with | null byte rejection | auto-mkdir on write/append | LOCK_EX on writes | lazy-loads root from config/app.php paths.storage
-[CORE] Logger | src/Core/Logger.php | static logging utility | emergency(), alert(), critical(), error(), warning(), notice(), info(), debug(), channel(name)->LogChannel, writeLog(level, message, context, channel), setConfig(config), reset() | PSR-3 levels with weight filtering | writes to logs/{channel}.log via FileSystem::append | lazy-loads config from config/app.php logging section | per-channel min_level overrides
+[CORE] Logger | src/Core/Logger.php | static logging utility | emergency(), alert(), critical(), error(), warning(), notice(), info(), debug(), channel(name)->LogChannel, writeLog(level, message, context, channel), setConfig(config), reset() | PSR-3 levels with weight filtering | writes to logs/{channel}.log or logs/{channel}-YYYY-MM-DD.log (daily rotation) via FileSystem::append | lazy-loads config from config/app.php logging section | per-channel min_level overrides | daily rotation with auto-cleanup of old files (max_files days)
 [CORE] LogChannel | src/Core/LogChannel.php | named log channel object | emergency(), alert(), critical(), error(), warning(), notice(), info(), debug() | delegates to Logger::writeLog() | returned by Logger::channel()
 [CORE] FormBuilder | src/Core/FormBuilder.php | static form helper | open(attributes), close(), text(), email(), password(), textarea(), number(), hidden(), select(), checkbox(), radio(), submit() | auto CSRF, method spoofing, Bootstrap 5 markup, validation error states, old input repopulation
 [CORE] Mailer | src/Core/Mailer.php | static SMTP class | send(to, subject, body, options)->bool, sendTemplate(to, subject, template, data)->bool, setConfig(config), reset() | raw SMTP via stream_socket_client | TLS/SSL support, AUTH LOGIN | logs via Logger::channel('mail') | returns false on failure (never throws)
 [CORE] ErrorHandler | src/Core/ErrorHandler.php | static class | register(config), handleException(Throwable), handleError(severity, message, file, line), handleShutdown(), reset(), isDebug() | global exception/error/shutdown handler | debug mode: dev page with stack trace, code snippet, request data | production mode: branded error pages (404, 403, 500, generic) | API requests: JSON error responses | logs via Logger::channel('error') | ValidationException: redirect with errors + old input | HttpException: custom status codes + headers
+[CORE] CacheDriver | src/Core/CacheDriver.php | interface | get(key), set(key, value, ttl), has(key), delete(key), clear() | contract for cache backends
+[CORE] FileCacheDriver | src/Core/FileCacheDriver.php | implements CacheDriver | file-based cache | constructor(?cacheDir) defaults to storage/cache | serialized values with expiry timestamp | LOCK_EX writes | key sanitization (special chars → underscores, long keys → md5) | garbage collection on first set() per request | .cache file extension
+[CORE] Cache | src/Core/Cache.php | static facade | get(key, default), set(key, value, ttl), has(key), delete(key), clear(), remember(key, ttl, callback), setDriver(CacheDriver), reset() | delegates to CacheDriver | default TTL from config/app.php cache.ttl (3600) | lazy-initializes FileCacheDriver
+[CORE] FileUpload | src/Core/FileUpload.php | static file upload handler | handle(fieldName, options)->?array, delete(path)->bool, setConfig(config), reset() | server-side MIME detection via finfo | validates MIME type and file size | generates unique hex filenames | writes via FileSystem | configurable allowed_types and max_size | lazy-loads config from config/app.php uploads section | delete restricted to uploads/ prefix
+[CORE] PaginationResult | src/Core/PaginationResult.php | value object | items(), currentPage(), lastPage(), total(), perPage(), hasMorePages(), links(baseUrl) | Bootstrap 5 pagination HTML generation | smart ellipsis for many pages (<=7 show all, otherwise 1...current-1,current,current+1...last) | preserves existing query string params
+[CORE] Paginator | src/Core/Paginator.php | static class | paginate(table, perPage, conditions, orderBy)->PaginationResult, fromQuery(countSql, selectSql, bindings, perPage)->PaginationResult, setCurrentPage(page), reset() | simple table pagination with WHERE conditions (equality or operator array) | fromQuery for complex joins | resolves page from $_GET['page'] or manual setCurrentPage
 
 ## EXCEPTIONS
 
@@ -38,7 +44,7 @@
 
 ## MODELS
 
-[MODEL] User | src/Models/User.php | extends Model | authenticate(username, password)->?array, updatePassword(userId, current, new), setPassword(userId, new), roles(userId)->array, hasRole(userId, slug)->bool, hasPermission(userId, slug)->bool, syncRoles(userId, roleIds) | MySQL users table | ARGON2ID hashing | many-to-many roles via user_roles pivot
+[MODEL] User | src/Models/User.php | extends Model | authenticate(username, password)->?array, updatePassword(userId, current, new), setPassword(userId, new), roles(userId)->array, hasRole(userId, slug)->bool, hasPermission(userId, slug)->bool, syncRoles(userId, roleIds) | MySQL users table | ARGON2ID hashing | many-to-many roles via user_roles pivot | $softDeletes = true
 [MODEL] RememberToken | src/Models/RememberToken.php | extends Model | createToken(userId), validate(rawToken)->?array, deleteToken(rawToken), clearForUser(userId), clearAll() | MySQL remember_tokens table | SHA256 hash, 90-day lifetime | user_id based
 [MODEL] Role | src/Models/Role.php | extends Model | findBySlug(slug), permissions(roleId), hasPermission(roleId, slug), users(roleId)->array, syncPermissions(roleId, permissionIds) | MySQL roles table | seeded: admin, editor, viewer
 [MODEL] Permission | src/Models/Permission.php | extends Model | findBySlug(slug) | MySQL permissions table | seeded: users.view, users.create, users.edit, users.delete
@@ -53,12 +59,14 @@
 [MIDDLEWARE] ApiAuthMiddleware | src/Middleware/ApiAuthMiddleware.php | static class | verify() | reads Authorization: Bearer app_xxx header | validates API key | stores user in $_REQUEST['_api_user'] | returns JSON 401
 [MIDDLEWARE] ApiRateLimitMiddleware | src/Middleware/ApiRateLimitMiddleware.php | static class | check() | keyed by API key hash | 60 requests/minute | returns JSON 429 with Retry-After
 [MIDDLEWARE] RequestLogMiddleware | src/Middleware/RequestLogMiddleware.php | static class | start(), log(), reset() | logs every request on shutdown via Logger::channel('requests') | captures: method, uri, status, duration_ms, ip, user_id | logs to storage/logs/requests.log
+[MIDDLEWARE] SecurityHeadersMiddleware | src/Middleware/SecurityHeadersMiddleware.php | static class | apply(), setConfig(), resetConfig(), loadConfig() | sets X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy, optional CSP | configurable via security_headers key in config/app.php | respects enabled flag and headers_sent()
+[MIDDLEWARE] CorsMiddleware | src/Middleware/CorsMiddleware.php | static class | handle(), setConfig(), resetConfig(), loadConfig() | checks $_SERVER['HTTP_ORIGIN'] against allowed_origins | sets Access-Control-Allow-Origin, Vary: Origin | OPTIONS preflight: sets Allow-Methods, Allow-Headers, Max-Age, responds 204 via ExitTrap | optional credentials support | configurable via cors key in config/app.php
 
 ## ROUTING
 
 [ROUTING] Router | src/Routing/Router.php | static fluent API | get(), post(), put(), patch(), delete(), match(), resource(), group(), url(name), dispatch(), reset() | named routes, route groups with prefix/middleware, method spoofing via _method
 [ROUTING] Route | src/Routing/Route.php | route object | name(), middleware(), where(param, pattern), matches(method, uri)->?params | param constraints, regex matching
-[ROUTING] MiddlewarePipeline | src/Routing/MiddlewarePipeline.php | static class | register(alias, handler), run(middlewareList) | aliases: auth, csrf, role, permission, api_auth, api_rate_limit | supports colon params (role:admin,editor)
+[ROUTING] MiddlewarePipeline | src/Routing/MiddlewarePipeline.php | static class | register(alias, handler), run(middlewareList) | aliases: auth, cors, csrf, role, permission, api_auth, api_rate_limit | supports colon params (role:admin,editor)
 
 ## ROUTES
 
@@ -88,7 +96,8 @@
 [ROUTE] GET /admin/roles/{id}/edit | config/routes.php | Admin\RoleController::edit | middleware: auth, role:admin
 [ROUTE] PUT /admin/roles/{id} | config/routes.php | Admin\RoleController::update | middleware: auth, role:admin, csrf | method spoofed via _method
 [ROUTE] POST /admin/roles/{id}/delete | config/routes.php | Admin\RoleController::destroy | middleware: auth, role:admin, csrf
-[ROUTE] GET /api/v1/user | config/routes.php | Api\UserApiController::me | middleware: api_auth, api_rate_limit | name: api.user
+[ROUTE] OPTIONS /api/v1/{path} | config/routes.php | CORS preflight catch-all | middleware: cors | empty response
+[ROUTE] GET /api/v1/user | config/routes.php | Api\UserApiController::me | middleware: cors, api_auth, api_rate_limit | name: api.user
 
 ## VIEWS & TEMPLATES
 
@@ -117,7 +126,7 @@
 
 ## CONFIG
 
-[CONFIG] app.php | config/app.php | main app config | app_name=App, timezone(America/Chicago), debug, url(APP_URL), database(env-based: DB_HOST, DB_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD), session(name=app_session, lifetime=7200), remember_me(lifetime=90days), csrf(enabled, token_length=32), mail(MAIL_HOST/PORT/USERNAME/PASSWORD/ENCRYPTION/FROM), password_reset(token_lifetime=3600), rate_limit(max_attempts=3, lockout=30min, progressive, max=24hr)
+[CONFIG] app.php | config/app.php | main app config | app_name=App, timezone(America/Chicago), debug, url(APP_URL), database(env-based: DB_HOST, DB_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD), session(name=app_session, lifetime=7200), remember_me(lifetime=90days), csrf(enabled, token_length=32), logging(rotation=daily, max_files=14), mail(MAIL_HOST/PORT/USERNAME/PASSWORD/ENCRYPTION/FROM), password_reset(token_lifetime=3600), rate_limit(max_attempts=3, lockout=30min, progressive, max=24hr), security_headers(enabled, frame_options=DENY, csp), cors(allowed_origins, methods, headers, max_age, credentials), uploads(allowed_types, max_size=5MB), cache(driver=file, ttl=3600)
 [CONFIG] routes.php | config/routes.php | route definitions | fluent static API | Router::get/post/put/delete with name(), middleware(), where() | groups with prefix/middleware
 [CONFIG] services.php | config/services.php | placeholder | empty file
 
@@ -129,17 +138,27 @@
 
 ## ENTRY POINT
 
-[ENTRY] index.php | public/index.php | front controller | loads autoloader → config → timezone → ErrorHandler::register() → RequestLogMiddleware::start() → session → remember-me check → require routes.php → Router::dispatch() | session config: file-based, 2hr lifetime, httponly, samesite=lax
+[ENTRY] index.php | public/index.php | front controller | loads autoloader → config → timezone → ErrorHandler::register() → SecurityHeadersMiddleware::apply() → RequestLogMiddleware::start() → session → remember-me check → require routes.php → Router::dispatch() | session config: file-based, 2hr lifetime, httponly, samesite=lax
 [ENTRY] .htaccess | public/.htaccess | Apache rewrite rules | all requests → index.php | blocks: .env, .pwd, .json, .lock, .md | no directory listing
+[ENTRY] cli | cli | CLI entry point | loads autoloader → config → timezone → CommandRunner::run() | executable, shebang #!/usr/bin/env php
+
+## COMMANDS
+
+[COMMAND] Command | src/Commands/Command.php | abstract base | $name, $description, abstract execute(args)->int | helpers: output(STDOUT), error(STDERR), success(green ANSI), warning(yellow ANSI), confirm(y/n STDIN) | getName(), getDescription()
+[COMMAND] CommandRunner | src/Commands/CommandRunner.php | discovery + dispatch | auto-discovers *Command.php in src/Commands/ | run(args)->int dispatches to command or showHelp() | getCommands() for testing | indexes by $name property
+[COMMAND] MigrateCommand | src/Commands/MigrateCommand.php | name: migrate | creates migrations table on first run | scans database/migrations/*.sql | tracks executed in migrations table | runs pending SQL files via PDO::exec() | uses Database::getConnection()
+[COMMAND] CacheClearCommand | src/Commands/CacheClearCommand.php | name: cache:clear | calls Cache::clear() | prints success message
+[COMMAND] PasswordResetCommand | src/Commands/PasswordResetCommand.php | name: password:reset | usage: php cli password:reset <username> <password> | validates 2 args | looks up user by username | hashes with ARGON2ID | updates users table | uses Database::getConnection()
 
 ## DATABASE
 
-[DATABASE] init.sql | database/init.sql | MySQL schema + seed | tables: roles, permissions, role_permissions, users, user_roles, remember_tokens, rate_limits, api_keys, password_reset_tokens | seeds admin user (password: 'password'), 3 roles, 4 permissions, admin user_roles assignment
+[DATABASE] init.sql | database/init.sql | MySQL schema + seed | tables: roles, permissions, role_permissions, users (with deleted_at), user_roles, remember_tokens, rate_limits, api_keys, password_reset_tokens, migrations | seeds admin user (password: 'password'), 3 roles, 4 permissions, admin user_roles assignment | creates app_test DB with same schema
 [DATABASE] migrations/002_roles_and_permissions.sql | database/migrations/002_roles_and_permissions.sql | adds RBAC | creates roles, permissions, role_permissions tables | ALTERs users (email, name, role_id, is_active, last_login_at) | ALTERs remember_tokens (user_id, drops username)
 [DATABASE] migrations/003_api_keys.sql | database/migrations/003_api_keys.sql | creates api_keys table | user_id FK, name, key_hash (UNIQUE), last_used_at
 [DATABASE] migrations/004_many_to_many_roles.sql | database/migrations/004_many_to_many_roles.sql | many-to-many roles | creates user_roles pivot, migrates users.role_id data, drops role_id from users, drops level from roles
 [DATABASE] migrations/005_password_reset_tokens.sql | database/migrations/005_password_reset_tokens.sql | creates password_reset_tokens table | user_id UNIQUE FK, token_hash indexed, expires_at indexed
-[DATABASE] users table | MySQL | id, username (UNIQUE), email, name, is_active, last_login_at, password_hash, created_at, updated_at
+[DATABASE] migrations/006_add_soft_deletes_to_users.sql | database/migrations/006_add_soft_deletes_to_users.sql | adds deleted_at TIMESTAMP NULL to users table + index
+[DATABASE] users table | MySQL | id, username (UNIQUE), email, name, is_active, last_login_at, password_hash, created_at, updated_at, deleted_at (nullable, indexed) | soft deletes enabled
 [DATABASE] roles table | MySQL | id, name, slug (UNIQUE), description, created_at
 [DATABASE] permissions table | MySQL | id, name, slug (UNIQUE), description, created_at
 [DATABASE] role_permissions table | MySQL | role_id + permission_id (composite PK, FKs CASCADE)
@@ -148,6 +167,7 @@
 [DATABASE] remember_tokens table | MySQL | id, user_id (FK CASCADE), token_hash (indexed), expires_at, created_at
 [DATABASE] rate_limits table | MySQL | id, ip_address (UNIQUE), attempts (JSON), lockout_until, lockout_count, updated_at
 [DATABASE] api_keys table | MySQL | id, user_id (FK CASCADE), name, key_hash (UNIQUE, indexed), last_used_at, created_at
+[DATABASE] migrations table | MySQL | id, migration (UNIQUE VARCHAR 255), executed_at (TIMESTAMP) | created by MigrateCommand on first run | tracks executed migration filenames
 
 ## STORAGE
 
@@ -178,18 +198,20 @@
 [PATTERN] Validation | Validator::make(data, rules)->validate() | per-field errors stored in $_SESSION['_validation_errors'] | used by FormBuilder for error display | rules: required, string, email, min, max, confirmed, unique, in
 [PATTERN] Base Model | abstract Model class | static CRUD methods | $table + $fillable for mass-assignment protection | uses Database::getConnection() | returns plain arrays
 [PATTERN] Password Hashing | ARGON2ID | password_hash(PASSWORD_ARGON2ID) → stored in MySQL users table → password_verify() on login
+[PATTERN] Database Transactions | Database::transaction(callable) wraps callback in begin/commit with rollback on Throwable | nested transactions via SAVEPOINTs (sp_1, sp_2, ...) with $transactionDepth tracking | beginTransaction()/commit()/rollBack() for manual control | detects existing PDO transactions (e.g., test wrappers) and uses savepoints instead of real begin | throws RuntimeException on commit/rollBack without active transaction
 [PATTERN] Database Persistence | MySQL 8.0 | PDO singleton via Database::getConnection() | tables: users, roles, permissions, role_permissions, user_roles, remember_tokens, rate_limits, api_keys | env-based config
 [PATTERN] Error Handling | ErrorHandler registered in index.php | set_exception_handler + set_error_handler + register_shutdown_function | HttpException hierarchy (404, 403, custom status) | ValidationException redirects with errors + old input | debug mode: detailed dev page with stack trace + code snippet | production mode: branded error pages via views/errors/ | API routes (/api/*): JSON error responses | logs to error channel (404→notice, 403→warning, 500→error) | PHP warnings/notices converted to ErrorException | fatal errors caught via shutdown function
 [PATTERN] Request Logging | RequestLogMiddleware::start() in index.php | register_shutdown_function logs on every request | method, URI, status, duration_ms, IP, user_id | Logger::channel('requests') → storage/logs/requests.log
 [PATTERN] Password Reset | email-based reset flow | forgot form → validate email → generate token (SHA256, 1hr, one per user) → send email via Mailer::sendTemplate() → reset form → validate token + set password → delete token + clear remember tokens | no user enumeration (same success message regardless) | single-use tokens | CSRF on POST routes
 [PATTERN] Mail | Mailer static class | raw SMTP via stream_socket_client | STARTTLS (587) or SSL (465) | AUTH LOGIN | sendTemplate() renders PHP view with ob_start | logs to mail channel | returns false on failure (never throws) | config via app.php mail section
 [PATTERN] Security | defense in depth | CSRF tokens + rate limiting + session regeneration + output escaping + httponly cookies + .htaccess blocking + ARGON2ID hashing + timing-safe comparison + RBAC + API key hashing
+[PATTERN] CLI Commands | CommandRunner auto-discovers *Command.php in src/Commands/ | abstract Command base with output helpers (STDOUT/STDERR, ANSI colors) | built-in: migrate (database/migrations/*.sql tracking), cache:clear (Cache::clear()), password:reset (username + password args) | entry point: cli (project root, executable)
 
 ## TESTING
 
 [TEST] phpunit.xml | phpunit.xml | PHPUnit 11 config | suites: Unit, Integration | env vars for test DB (app_test) | bootstrap: tests/bootstrap.php
 [TEST] bootstrap.php | tests/bootstrap.php | test bootstrap | loads autoloader, enables ExitTrap test mode, starts session
-[TEST] TestCase | tests/TestCase.php | base test class | saves/restores superglobals ($_SESSION, $_SERVER, $_POST, $_REQUEST, $_COOKIE) | resets Router, FormBuilder, CsrfMiddleware, RateLimitMiddleware
+[TEST] TestCase | tests/TestCase.php | base test class | saves/restores superglobals ($_SESSION, $_SERVER, $_POST, $_REQUEST, $_COOKIE) | resets Router, FileSystem, Logger, Mailer, ErrorHandler, RequestLogMiddleware, FormBuilder, CsrfMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware, Paginator, FileUpload, Cache, CorsMiddleware
 [TEST] DatabaseTestCase | tests/DatabaseTestCase.php | extends TestCase | connects to app_test DB | wraps each test in transaction + rollback | createTestUser(overrides, roles=['viewer']), getRoleId() helpers
 [TEST] Unit/Core/FlashTest | tests/Unit/Core/FlashTest.php | 12 tests | set/get, multiple messages, all(), has(), old input
 [TEST] Unit/Core/ValidatorTest | tests/Unit/Core/ValidatorTest.php | 25 tests | all rules except unique | fieldLabel humanization
@@ -197,6 +219,7 @@
 [TEST] Unit/Routing/RouteTest | tests/Unit/Routing/RouteTest.php | 15 tests | matches(), where(), name(), middleware(), setPrefix(), addMiddleware()
 [TEST] Unit/Routing/RouterTest | tests/Unit/Routing/RouterTest.php | 18 tests | HTTP methods, named routes, url(), groups, resource(), dispatch(), method spoofing
 [TEST] Unit/Routing/MiddlewarePipelineTest | tests/Unit/Routing/MiddlewarePipelineTest.php | 5 tests | run(), register(), parameters, ordering
+[TEST] Integration/Core/DatabaseTransactionTest | tests/Integration/Core/DatabaseTransactionTest.php | 8 tests | transaction commit/rollback, return value, nested savepoints, manual begin/commit/rollback, throws without active transaction
 [TEST] Integration/Core/ModelTest | tests/Integration/Core/ModelTest.php | 13 tests | CRUD via Role model | find, findBy, where, all, create, update, delete, query
 [TEST] Integration/Core/ValidatorUniqueTest | tests/Integration/Core/ValidatorUniqueTest.php | 4 tests | unique rule with DB
 [TEST] Integration/Models/UserTest | tests/Integration/Models/UserTest.php | 17 tests | authenticate, updatePassword, setPassword, roles, hasRole, hasPermission (multi-role)
@@ -213,6 +236,15 @@
 [TEST] Unit/Core/MailerTest | tests/Unit/Core/MailerTest.php | 3 tests | setConfig overrides, reset clears config, send returns false on connection failure
 [TEST] Unit/Core/ErrorHandlerTest | tests/Unit/Core/ErrorHandlerTest.php | 16 tests | HttpException status codes, dev/production pages, API JSON responses, ValidationException redirect, error-to-exception conversion, log levels (404→notice, 403→warning, 500→error), production detail suppression
 [TEST] Unit/Middleware/RequestLogMiddlewareTest | tests/Unit/Middleware/RequestLogMiddlewareTest.php | 6 tests | logs method/URI/status/duration, includes user_id when authenticated, reset clears state
+[TEST] Unit/Core/CacheTest | tests/Unit/Core/CacheTest.php | 14 tests | get/set round trip, default on miss, has true/false, delete, clear, expired returns default, remember caches on miss, remember returns cached, TTL override, driver injection, reset clears driver, key sanitization, complex value serialization
+[TEST] Unit/Middleware/SecurityHeadersTest | tests/Unit/Middleware/SecurityHeadersTest.php | 8 tests | config defaults, disabled skips headers, reset clears config, custom frame_options, CSP when configured, headers_sent handling, empty CSP, setConfig override
+[TEST] Unit/Core/FileUploadTest | tests/Unit/Core/FileUploadTest.php | 11 tests | null for no upload, null for no file error, success returns array, unique filename with extension, custom directory, throws on disallowed mime, throws on too large, throws on upload error, delete removes file, delete rejects non-uploads path, reset clears config
+[TEST] Unit/Commands/CommandRunnerTest | tests/Unit/Commands/CommandRunnerTest.php | 4 tests | no args shows help, unknown command returns 1, discovers built-in commands (migrate, cache:clear, password:reset), runs valid command
+[TEST] Unit/Core/PaginationResultTest | tests/Unit/Core/PaginationResultTest.php | tests PaginationResult value object | links HTML structure, empty for single page, active page, prev/next disabled, query string preserved, ellipsis
+[TEST] Unit/Middleware/CorsMiddlewareTest | tests/Unit/Middleware/CorsMiddlewareTest.php | 12 tests | no headers without Origin, OPTIONS preflight exits, non-OPTIONS passes, rejects disallowed origin, wildcard allows any, credentials support, reset clears config
+[TEST] Integration/Core/PaginatorTest | tests/Integration/Core/PaginatorTest.php | tests Paginator with DB | correct page results, default page 1, clamps to last page, conditions filtering, order by, empty table, fromQuery
+[TEST] Integration/Core/SoftDeleteTest | tests/Integration/Core/SoftDeleteTest.php | 11 tests | delete sets deleted_at, find/findBy/where/all exclude deleted, withTrashed includes, onlyTrashed returns only deleted, flags auto-reset, restore, forceDelete, non-soft-delete model
+[TEST] Integration/Commands/MigrateCommandTest | tests/Integration/Commands/MigrateCommandTest.php | 4 tests | creates migrations table, runs pending migrations, skips executed migrations, reports nothing when up to date
 
 ## SESSION KEYS
 

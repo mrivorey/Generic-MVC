@@ -51,6 +51,8 @@ return [
         'default_channel' => getenv('LOG_CHANNEL') ?: 'app',
         'min_level' => getenv('LOG_LEVEL') ?: 'debug',
         'channels' => ['requests' => ['min_level' => 'info']],
+        'rotation' => 'daily',  // 'daily' or 'single'
+        'max_files' => 14,      // days to keep (daily rotation only)
     ],
 
     // Mail
@@ -77,5 +79,33 @@ return [
         'progressive' => true,
         'max_lockout_minutes' => 1440,  // 24 hours cap
         'attempt_window' => 900,         // 15 min window for counting attempts
+    ],
+
+    // Security Headers
+    'security_headers' => [
+        'enabled' => true,
+        'frame_options' => 'DENY',
+        'csp' => '',
+    ],
+
+    // CORS
+    'cors' => [
+        'allowed_origins' => ['*'],
+        'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+        'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With'],
+        'max_age' => 86400,
+        'allow_credentials' => false,
+    ],
+
+    // File Uploads
+    'uploads' => [
+        'allowed_types' => ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'],
+        'max_size' => 5242880, // 5MB
+    ],
+
+    // Cache
+    'cache' => [
+        'driver' => 'file',
+        'ttl' => 3600,
     ],
 ];

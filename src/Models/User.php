@@ -9,6 +9,7 @@ class User extends Model
 {
     protected static string $table = 'users';
     protected static array $fillable = ['username', 'email', 'name', 'is_active', 'password_hash'];
+    protected static bool $softDeletes = true;
 
     public static function authenticate(string $username, string $password): ?array
     {

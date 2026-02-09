@@ -17,8 +17,10 @@ class LoggerTest extends TestCase
 
         $this->tempDir = sys_get_temp_dir() . '/logger_test_' . uniqid();
         mkdir($this->tempDir, 0755, true);
+        $this->tempDir = realpath($this->tempDir);
         FileSystem::setStorageRoot($this->tempDir);
 
+        Logger::reset();
         Logger::setConfig([
             'default_channel' => 'app',
             'min_level' => 'debug',
@@ -54,6 +56,12 @@ class LoggerTest extends TestCase
     private function readLog(string $channel = 'app'): string
     {
         return FileSystem::read("logs/{$channel}.log");
+    }
+
+    private function readDailyLog(string $channel = 'app'): string
+    {
+        $date = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d');
+        return FileSystem::read("logs/{$channel}-{$date}.log");
     }
 
     public function test_logs_to_default_channel_file(): void
@@ -225,5 +233,135 @@ class LoggerTest extends TestCase
 
         $log = $this->readLog();
         $this->assertStringContainsString('{"url":"/api/v1/users"}', $log);
+    }
+
+    public function test_daily_rotation_creates_dated_filename(): void
+    {
+        Logger::setConfig([
+            'default_channel' => 'app',
+            'min_level' => 'debug',
+            'channels' => [],
+            'timezone' => 'UTC',
+            'rotation' => 'daily',
+            'max_files' => 14,
+        ]);
+
+        Logger::info('Daily rotation test');
+
+        $date = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d');
+        $this->assertTrue(FileSystem::exists("logs/app-{$date}.log"));
+        $log = $this->readDailyLog();
+        $this->assertStringContainsString('app.INFO: Daily rotation test', $log);
+    }
+
+    public function test_single_rotation_keeps_original_filename(): void
+    {
+        Logger::setConfig([
+            'default_channel' => 'app',
+            'min_level' => 'debug',
+            'channels' => [],
+            'timezone' => 'UTC',
+            'rotation' => 'single',
+            'max_files' => 14,
+        ]);
+
+        Logger::info('Single rotation test');
+
+        $this->assertTrue(FileSystem::exists('logs/app.log'));
+        $log = $this->readLog();
+        $this->assertStringContainsString('app.INFO: Single rotation test', $log);
+    }
+
+    public function test_cleanup_removes_old_files(): void
+    {
+        // Create the logs directory
+        $logsDir = $this->tempDir . '/logs';
+        mkdir($logsDir, 0755, true);
+
+        // Create old log files (30 days ago, well beyond max_files=7)
+        for ($i = 20; $i <= 30; $i++) {
+            $date = (new \DateTimeImmutable("-{$i} days", new \DateTimeZone('UTC')))->format('Y-m-d');
+            file_put_contents($logsDir . "/app-{$date}.log", "old log entry\n");
+        }
+
+        Logger::setConfig([
+            'default_channel' => 'app',
+            'min_level' => 'debug',
+            'channels' => [],
+            'timezone' => 'UTC',
+            'rotation' => 'daily',
+            'max_files' => 7,
+        ]);
+
+        // Writing a log triggers cleanup
+        Logger::info('Trigger cleanup');
+
+        // Old files (beyond 7 days) should be deleted
+        for ($i = 20; $i <= 30; $i++) {
+            $date = (new \DateTimeImmutable("-{$i} days", new \DateTimeZone('UTC')))->format('Y-m-d');
+            $this->assertFileDoesNotExist($logsDir . "/app-{$date}.log", "File app-{$date}.log should have been deleted");
+        }
+    }
+
+    public function test_cleanup_preserves_recent_files(): void
+    {
+        // Create the logs directory
+        $logsDir = $this->tempDir . '/logs';
+        mkdir($logsDir, 0755, true);
+
+        // Create recent log files (within max_files=7 days)
+        for ($i = 1; $i <= 5; $i++) {
+            $date = (new \DateTimeImmutable("-{$i} days", new \DateTimeZone('UTC')))->format('Y-m-d');
+            file_put_contents($logsDir . "/app-{$date}.log", "recent log entry\n");
+        }
+
+        Logger::setConfig([
+            'default_channel' => 'app',
+            'min_level' => 'debug',
+            'channels' => [],
+            'timezone' => 'UTC',
+            'rotation' => 'daily',
+            'max_files' => 7,
+        ]);
+
+        // Writing a log triggers cleanup
+        Logger::info('Trigger cleanup');
+
+        // Recent files should still exist
+        for ($i = 1; $i <= 5; $i++) {
+            $date = (new \DateTimeImmutable("-{$i} days", new \DateTimeZone('UTC')))->format('Y-m-d');
+            $this->assertFileExists($logsDir . "/app-{$date}.log", "File app-{$date}.log should be preserved");
+        }
+    }
+
+    public function test_cleanup_runs_once_per_request(): void
+    {
+        // Create the logs directory
+        $logsDir = $this->tempDir . '/logs';
+        mkdir($logsDir, 0755, true);
+
+        // Create an old log file that would be cleaned up
+        $oldDate = (new \DateTimeImmutable('-30 days', new \DateTimeZone('UTC')))->format('Y-m-d');
+        file_put_contents($logsDir . "/app-{$oldDate}.log", "old entry\n");
+
+        Logger::setConfig([
+            'default_channel' => 'app',
+            'min_level' => 'debug',
+            'channels' => [],
+            'timezone' => 'UTC',
+            'rotation' => 'daily',
+            'max_files' => 7,
+        ]);
+
+        // First write triggers cleanup - old file gets deleted
+        Logger::info('First message');
+        $this->assertFileDoesNotExist($logsDir . "/app-{$oldDate}.log");
+
+        // Recreate the old file to test that cleanup does NOT run again
+        file_put_contents($logsDir . "/app-{$oldDate}.log", "old entry again\n");
+
+        // Second write should NOT trigger cleanup (flag already set)
+        Logger::info('Second message');
+        $this->assertFileExists($logsDir . "/app-{$oldDate}.log", 'Cleanup should not run a second time in same request');
     }
 }
