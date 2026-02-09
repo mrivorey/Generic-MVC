@@ -25,6 +25,14 @@
 [CORE] Logger | src/Core/Logger.php | static logging utility | emergency(), alert(), critical(), error(), warning(), notice(), info(), debug(), channel(name)->LogChannel, writeLog(level, message, context, channel), setConfig(config), reset() | PSR-3 levels with weight filtering | writes to logs/{channel}.log via FileSystem::append | lazy-loads config from config/app.php logging section | per-channel min_level overrides
 [CORE] LogChannel | src/Core/LogChannel.php | named log channel object | emergency(), alert(), critical(), error(), warning(), notice(), info(), debug() | delegates to Logger::writeLog() | returned by Logger::channel()
 [CORE] FormBuilder | src/Core/FormBuilder.php | static form helper | open(attributes), close(), text(), email(), password(), textarea(), number(), hidden(), select(), checkbox(), radio(), submit() | auto CSRF, method spoofing, Bootstrap 5 markup, validation error states, old input repopulation
+[CORE] ErrorHandler | src/Core/ErrorHandler.php | static class | register(config), handleException(Throwable), handleError(severity, message, file, line), handleShutdown(), reset(), isDebug() | global exception/error/shutdown handler | debug mode: dev page with stack trace, code snippet, request data | production mode: branded error pages (404, 403, 500, generic) | API requests: JSON error responses | logs via Logger::channel('error') | ValidationException: redirect with errors + old input | HttpException: custom status codes + headers
+
+## EXCEPTIONS
+
+[EXCEPTION] HttpException | src/Exceptions/HttpException.php | extends RuntimeException | constructor(statusCode, message, headers, previous) | getStatusCode(), getHeaders() | base HTTP error with status code
+[EXCEPTION] NotFoundException | src/Exceptions/NotFoundException.php | extends HttpException | default 404, message "Page not found"
+[EXCEPTION] AuthorizationException | src/Exceptions/AuthorizationException.php | extends HttpException | default 403, message "Access denied"
+[EXCEPTION] ValidationException | src/Exceptions/ValidationException.php | extends RuntimeException | constructor(errors, redirectUrl, oldInput) | getErrors(), getRedirectUrl(), getOldInput() | carries validation errors for redirect
 
 ## MODELS
 
@@ -41,6 +49,7 @@
 [MIDDLEWARE] RateLimitMiddleware | src/Middleware/RateLimitMiddleware.php | static class | check(ip), isLocked(ip), recordAttempt(ip), clear(ip) | MySQL rate_limits table | 3 attempts, 30min base lockout, progressive doubling, 24hr cap
 [MIDDLEWARE] ApiAuthMiddleware | src/Middleware/ApiAuthMiddleware.php | static class | verify() | reads Authorization: Bearer app_xxx header | validates API key | stores user in $_REQUEST['_api_user'] | returns JSON 401
 [MIDDLEWARE] ApiRateLimitMiddleware | src/Middleware/ApiRateLimitMiddleware.php | static class | check() | keyed by API key hash | 60 requests/minute | returns JSON 429 with Retry-After
+[MIDDLEWARE] RequestLogMiddleware | src/Middleware/RequestLogMiddleware.php | static class | start(), log(), reset() | logs every request on shutdown via Logger::channel('requests') | captures: method, uri, status, duration_ms, ip, user_id | logs to storage/logs/requests.log
 
 ## ROUTING
 
@@ -90,6 +99,11 @@
 [VIEW] admin/roles/edit.php | src/Views/admin/roles/edit.php | edit role form | uses FormBuilder | fields: name, slug, description, permissions[] checkboxes | method spoofed PUT
 [PARTIAL] partials/navbar.php | src/Views/partials/navbar.php | top navigation bar | admin dropdown (conditional on user_roles containing admin), profile link, API keys link, change password, logout | Manage Users + Manage Roles links
 [PARTIAL] partials/flash-messages.php | src/Views/partials/flash-messages.php | renders flash messages | Bootstrap 5 dismissible alerts | type mapping: success→success, error→danger, warning→warning, info→info
+[VIEW] errors/dev.php | src/Views/errors/dev.php | detailed debug error page | standalone HTML (no layout) | Bootstrap 5 dark theme | exception class, message, file:line, code snippet, stack trace, request details (method, URI, GET/POST, headers, session) | sensitive POST params masked
+[VIEW] errors/404.php | src/Views/errors/404.php | production 404 page | uses layouts/main.php | "Page Not Found" with Go Home link
+[VIEW] errors/403.php | src/Views/errors/403.php | production 403 page | uses layouts/main.php | "Access Denied" with Go Home link
+[VIEW] errors/500.php | src/Views/errors/500.php | production 500 page | uses layouts/main.php | "Server Error" with Go Home link
+[VIEW] errors/generic.php | src/Views/errors/generic.php | fallback error page | uses layouts/main.php | receives $code | generic message with Go Home link
 
 ## CONFIG
 
@@ -105,7 +119,7 @@
 
 ## ENTRY POINT
 
-[ENTRY] index.php | public/index.php | front controller | loads autoloader → config → timezone → session → remember-me check → require routes.php → Router::dispatch() | session config: file-based, 2hr lifetime, httponly, samesite=lax
+[ENTRY] index.php | public/index.php | front controller | loads autoloader → config → timezone → ErrorHandler::register() → RequestLogMiddleware::start() → session → remember-me check → require routes.php → Router::dispatch() | session config: file-based, 2hr lifetime, httponly, samesite=lax
 [ENTRY] .htaccess | public/.htaccess | Apache rewrite rules | all requests → index.php | blocks: .env, .pwd, .json, .lock, .md | no directory listing
 
 ## DATABASE
@@ -153,6 +167,8 @@
 [PATTERN] Base Model | abstract Model class | static CRUD methods | $table + $fillable for mass-assignment protection | uses Database::getConnection() | returns plain arrays
 [PATTERN] Password Hashing | ARGON2ID | password_hash(PASSWORD_ARGON2ID) → stored in MySQL users table → password_verify() on login
 [PATTERN] Database Persistence | MySQL 8.0 | PDO singleton via Database::getConnection() | tables: users, roles, permissions, role_permissions, user_roles, remember_tokens, rate_limits, api_keys | env-based config
+[PATTERN] Error Handling | ErrorHandler registered in index.php | set_exception_handler + set_error_handler + register_shutdown_function | HttpException hierarchy (404, 403, custom status) | ValidationException redirects with errors + old input | debug mode: detailed dev page with stack trace + code snippet | production mode: branded error pages via views/errors/ | API routes (/api/*): JSON error responses | logs to error channel (404→notice, 403→warning, 500→error) | PHP warnings/notices converted to ErrorException | fatal errors caught via shutdown function
+[PATTERN] Request Logging | RequestLogMiddleware::start() in index.php | register_shutdown_function logs on every request | method, URI, status, duration_ms, IP, user_id | Logger::channel('requests') → storage/logs/requests.log
 [PATTERN] Security | defense in depth | CSRF tokens + rate limiting + session regeneration + output escaping + httponly cookies + .htaccess blocking + ARGON2ID hashing + timing-safe comparison + RBAC + API key hashing
 
 ## TESTING
@@ -179,6 +195,8 @@
 [TEST] Integration/Middleware/AuthMiddlewareTest | tests/Integration/Middleware/AuthMiddlewareTest.php | 14 tests | check, setAuthenticated (multi-role), requireAuth, requireRole (membership), requirePermission, user
 [TEST] Integration/Middleware/ApiAuthMiddlewareTest | tests/Integration/Middleware/ApiAuthMiddlewareTest.php | 6 tests | verify with valid/invalid/missing header, inactive user
 [TEST] Integration/Middleware/ApiRateLimitTest | tests/Integration/Middleware/ApiRateLimitTest.php | 4 tests | check passes/fails, no api user, records attempt
+[TEST] Unit/Core/ErrorHandlerTest | tests/Unit/Core/ErrorHandlerTest.php | 16 tests | HttpException status codes, dev/production pages, API JSON responses, ValidationException redirect, error-to-exception conversion, log levels (404→notice, 403→warning, 500→error), production detail suppression
+[TEST] Unit/Middleware/RequestLogMiddlewareTest | tests/Unit/Middleware/RequestLogMiddlewareTest.php | 6 tests | logs method/URI/status/duration, includes user_id when authenticated, reset clears state
 
 ## SESSION KEYS
 

@@ -3,6 +3,7 @@
 namespace App\Middleware;
 
 use App\Core\ExitTrap;
+use App\Exceptions\AuthorizationException;
 use App\Models\User;
 use App\Models\Role;
 use App\Models\RememberToken;
@@ -27,9 +28,7 @@ class AuthMiddleware
         self::requireAuth();
         $userRoles = $_SESSION['user_roles'] ?? [];
         if (empty(array_intersect($userRoles, $allowedRoles))) {
-            http_response_code(403);
-            echo '<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body><h1>403 - Access Denied</h1><p>You do not have permission to access this page.</p></body></html>';
-            ExitTrap::exit();
+            throw new AuthorizationException('You do not have permission to access this page.');
         }
     }
 
@@ -38,9 +37,7 @@ class AuthMiddleware
         self::requireAuth();
         $userId = $_SESSION['user_id'] ?? null;
         if (!$userId || !User::hasPermission($userId, $slug)) {
-            http_response_code(403);
-            echo '<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body><h1>403 - Access Denied</h1><p>You do not have permission to perform this action.</p></body></html>';
-            ExitTrap::exit();
+            throw new AuthorizationException('You do not have permission to perform this action.');
         }
     }
 

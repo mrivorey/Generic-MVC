@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Routing;
 
+use App\Exceptions\NotFoundException;
 use App\Routing\Router;
 use App\Routing\Route;
 use Tests\TestCase;
@@ -151,13 +152,13 @@ class RouterTest extends TestCase
         $this->assertSame('Hello World', $result);
     }
 
-    public function testDispatchReturns404ForUnmatched(): void
+    public function testDispatchThrowsNotFoundForUnmatched(): void
     {
         $_SERVER['REQUEST_METHOD'] = 'GET';
         $_SERVER['REQUEST_URI'] = '/nonexistent';
 
-        $result = Router::dispatch();
-        $this->assertStringContainsString('404', $result);
+        $this->expectException(NotFoundException::class);
+        Router::dispatch();
     }
 
     public function testDispatchHandlesMethodSpoofing(): void

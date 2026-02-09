@@ -104,8 +104,7 @@ class Router
             }
         }
 
-        http_response_code(404);
-        return self::render404();
+        throw new \App\Exceptions\NotFoundException();
     }
 
     public static function getRoutes(): array
@@ -146,17 +145,5 @@ class Router
         if ($name !== null) {
             self::$namedRoutes[$name] = $route;
         }
-    }
-
-    private static function render404(): string
-    {
-        return '<!DOCTYPE html>
-<html>
-<head><title>404 Not Found</title></head>
-<body>
-<h1>404 - Page Not Found</h1>
-<p>The requested page could not be found.</p>
-</body>
-</html>';
     }
 }

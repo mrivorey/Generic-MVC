@@ -11,6 +11,10 @@ $config = require dirname(__DIR__) . '/config/app.php';
 // Set timezone
 date_default_timezone_set($config['timezone']);
 
+// Register error handler and request logging
+\App\Core\ErrorHandler::register($config);
+\App\Middleware\RequestLogMiddleware::start();
+
 // Configure session
 ini_set('session.save_path', $config['paths']['sessions']);
 ini_set('session.gc_maxlifetime', $config['session']['lifetime']);

@@ -3,7 +3,7 @@
 return [
     'name' => 'App',
     'timezone' => 'America/Chicago',
-    'debug' => true,
+    'debug' => filter_var(getenv('APP_DEBUG') ?: 'true', FILTER_VALIDATE_BOOLEAN),
 
     // Paths
     'paths' => [
@@ -49,7 +49,7 @@ return [
     'logging' => [
         'default_channel' => getenv('LOG_CHANNEL') ?: 'app',
         'min_level' => getenv('LOG_LEVEL') ?: 'debug',
-        'channels' => [],
+        'channels' => ['requests' => ['min_level' => 'info']],
     ],
 
     // Rate Limiting (Brute Force Protection)

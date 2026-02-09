@@ -2,12 +2,14 @@
 
 namespace Tests;
 
+use App\Core\ErrorHandler;
 use App\Core\FileSystem;
 use App\Core\FormBuilder;
 use App\Core\Flash;
 use App\Core\Logger;
 use App\Middleware\CsrfMiddleware;
 use App\Middleware\RateLimitMiddleware;
+use App\Middleware\RequestLogMiddleware;
 use App\Routing\Router;
 use PHPUnit\Framework\TestCase as BaseTestCase;
 
@@ -45,6 +47,8 @@ abstract class TestCase extends BaseTestCase
         Router::reset();
         FileSystem::reset();
         Logger::reset();
+        ErrorHandler::reset();
+        RequestLogMiddleware::reset();
         FormBuilder::resetState();
         CsrfMiddleware::resetConfig();
         RateLimitMiddleware::resetConfig();

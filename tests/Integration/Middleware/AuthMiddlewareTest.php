@@ -3,6 +3,7 @@
 namespace Tests\Integration\Middleware;
 
 use App\Core\ExitException;
+use App\Exceptions\AuthorizationException;
 use App\Middleware\AuthMiddleware;
 use App\Models\User;
 use Tests\DatabaseTestCase;
@@ -83,7 +84,7 @@ class AuthMiddlewareTest extends DatabaseTestCase
         $user = $this->createTestUser([], ['viewer']);
         AuthMiddleware::setAuthenticated($user);
 
-        $this->expectException(ExitException::class);
+        $this->expectException(AuthorizationException::class);
         AuthMiddleware::requireRole('admin');
     }
 
@@ -122,7 +123,7 @@ class AuthMiddlewareTest extends DatabaseTestCase
         $user = $this->createTestUser([], ['viewer']);
         AuthMiddleware::setAuthenticated($user);
 
-        $this->expectException(ExitException::class);
+        $this->expectException(AuthorizationException::class);
         AuthMiddleware::requirePermission('users.edit');
     }
 
