@@ -7,6 +7,7 @@ use App\Core\FileSystem;
 use App\Core\FormBuilder;
 use App\Core\Flash;
 use App\Core\Logger;
+use App\Core\Mailer;
 use App\Middleware\CsrfMiddleware;
 use App\Middleware\RateLimitMiddleware;
 use App\Middleware\RequestLogMiddleware;
@@ -47,6 +48,7 @@ abstract class TestCase extends BaseTestCase
         Router::reset();
         FileSystem::reset();
         Logger::reset();
+        Mailer::reset();
         ErrorHandler::reset();
         RequestLogMiddleware::reset();
         FormBuilder::resetState();

@@ -10,6 +10,7 @@
 [CONTROLLER] ProfileController | src/Controllers/ProfileController.php | extends BaseController | show(), showChangePassword(), changePassword(), apiKeys(), generateApiKey(), revokeApiKey(id) | uses User, RememberToken, ApiKey, Flash, Validator
 [CONTROLLER] Admin\UserController | src/Controllers/Admin/UserController.php | extends BaseController | index(), create(), store(), edit(id), update(id), destroy(id) | CRUD for users | uses User, Role, Flash, Validator | syncRoles on create/update
 [CONTROLLER] Admin\RoleController | src/Controllers/Admin/RoleController.php | extends BaseController | index(), create(), store(), edit(id), update(id), destroy(id) | CRUD for roles | uses Role, Permission, Flash, Validator | syncPermissions on create/update | prevents admin role deletion
+[CONTROLLER] PasswordResetController | src/Controllers/PasswordResetController.php | extends BaseController | showForgotForm(), sendResetLink(), showResetForm(), resetPassword() | uses User, PasswordResetToken, RememberToken, Mailer, Flash, Validator | no user enumeration on forgot | single-use tokens | CSRF on POST
 [CONTROLLER] Api\ApiController | src/Controllers/Api/ApiController.php | abstract API base | success(data, meta), error(message, code, status), apiUser() | extends BaseController | overrides redirect to throw
 [CONTROLLER] Api\UserApiController | src/Controllers/Api/UserApiController.php | extends ApiController | me() | returns authenticated API user info with roles array
 
@@ -25,6 +26,7 @@
 [CORE] Logger | src/Core/Logger.php | static logging utility | emergency(), alert(), critical(), error(), warning(), notice(), info(), debug(), channel(name)->LogChannel, writeLog(level, message, context, channel), setConfig(config), reset() | PSR-3 levels with weight filtering | writes to logs/{channel}.log via FileSystem::append | lazy-loads config from config/app.php logging section | per-channel min_level overrides
 [CORE] LogChannel | src/Core/LogChannel.php | named log channel object | emergency(), alert(), critical(), error(), warning(), notice(), info(), debug() | delegates to Logger::writeLog() | returned by Logger::channel()
 [CORE] FormBuilder | src/Core/FormBuilder.php | static form helper | open(attributes), close(), text(), email(), password(), textarea(), number(), hidden(), select(), checkbox(), radio(), submit() | auto CSRF, method spoofing, Bootstrap 5 markup, validation error states, old input repopulation
+[CORE] Mailer | src/Core/Mailer.php | static SMTP class | send(to, subject, body, options)->bool, sendTemplate(to, subject, template, data)->bool, setConfig(config), reset() | raw SMTP via stream_socket_client | TLS/SSL support, AUTH LOGIN | logs via Logger::channel('mail') | returns false on failure (never throws)
 [CORE] ErrorHandler | src/Core/ErrorHandler.php | static class | register(config), handleException(Throwable), handleError(severity, message, file, line), handleShutdown(), reset(), isDebug() | global exception/error/shutdown handler | debug mode: dev page with stack trace, code snippet, request data | production mode: branded error pages (404, 403, 500, generic) | API requests: JSON error responses | logs via Logger::channel('error') | ValidationException: redirect with errors + old input | HttpException: custom status codes + headers
 
 ## EXCEPTIONS
@@ -40,6 +42,7 @@
 [MODEL] RememberToken | src/Models/RememberToken.php | extends Model | createToken(userId), validate(rawToken)->?array, deleteToken(rawToken), clearForUser(userId), clearAll() | MySQL remember_tokens table | SHA256 hash, 90-day lifetime | user_id based
 [MODEL] Role | src/Models/Role.php | extends Model | findBySlug(slug), permissions(roleId), hasPermission(roleId, slug), users(roleId)->array, syncPermissions(roleId, permissionIds) | MySQL roles table | seeded: admin, editor, viewer
 [MODEL] Permission | src/Models/Permission.php | extends Model | findBySlug(slug) | MySQL permissions table | seeded: users.view, users.create, users.edit, users.delete
+[MODEL] PasswordResetToken | src/Models/PasswordResetToken.php | extends Model | createToken(userId)->rawToken, validate(rawToken)->?array, deleteToken(rawToken), clearForUser(userId), clearExpired() | MySQL password_reset_tokens table | SHA256 hash, 1-hour lifetime | UNIQUE user_id (one token per user) | ON DUPLICATE KEY UPDATE for replacement
 [MODEL] ApiKey | src/Models/ApiKey.php | extends Model | generate(userId, name)->rawKey, validateKey(rawKey)->?array, forUser(userId), revoke(keyId, userId) | MySQL api_keys table | SHA256 hash, app_ prefix
 
 ## MIDDLEWARE
@@ -63,6 +66,10 @@
 [ROUTE] GET /login | config/routes.php | AuthController::showLogin | no auth | name: login
 [ROUTE] POST /login | config/routes.php | AuthController::login | middleware: csrf | processes login with rate limiting
 [ROUTE] GET /logout | config/routes.php | AuthController::logout | name: logout
+[ROUTE] GET /forgot-password | config/routes.php | PasswordResetController::showForgotForm | public | name: password.forgot
+[ROUTE] POST /forgot-password | config/routes.php | PasswordResetController::sendResetLink | middleware: csrf | no user enumeration
+[ROUTE] GET /reset-password | config/routes.php | PasswordResetController::showResetForm | public | name: password.reset | validates token via query param
+[ROUTE] POST /reset-password | config/routes.php | PasswordResetController::resetPassword | middleware: csrf | single-use token
 [ROUTE] GET /profile | config/routes.php | ProfileController::show | middleware: auth | name: profile
 [ROUTE] GET /change-password | config/routes.php | ProfileController::showChangePassword | middleware: auth | name: password.change
 [ROUTE] POST /change-password | config/routes.php | ProfileController::changePassword | middleware: auth, csrf
@@ -87,6 +94,9 @@
 
 [VIEW] layouts/main.php | src/Views/layouts/main.php | base HTML layout | vars: $title, $mainClass, $showNav, $content, $scripts | Bootstrap 5 dark theme, conditional navbar, flash messages
 [VIEW] auth/login.php | src/Views/auth/login.php | login form | uses FormBuilder | fields: username, password, remember_me | flash messages
+[VIEW] auth/forgot-password.php | src/Views/auth/forgot-password.php | forgot password form | uses FormBuilder | fields: email | flash messages | "Back to Login" link
+[VIEW] auth/reset-password.php | src/Views/auth/reset-password.php | reset password form | uses FormBuilder | fields: token(hidden), password, password_confirmation | "Back to Login" link
+[VIEW] emails/password-reset.php | src/Views/emails/password-reset.php | HTML email template | vars: $resetUrl, $userName, $expiryMinutes | dark theme, reset button, expiry notice, ignore message
 [VIEW] auth/change-password.php | src/Views/auth/change-password.php | password change form | uses FormBuilder | fields: current_password, new_password, new_password_confirmation
 [VIEW] home/index.php | src/Views/home/index.php | home page | public | welcome page with conditional auth
 [VIEW] profile/show.php | src/Views/profile/show.php | user profile | displays user info, roles (badges), dates | link to change password
@@ -107,7 +117,7 @@
 
 ## CONFIG
 
-[CONFIG] app.php | config/app.php | main app config | app_name=App, timezone(America/Chicago), debug, database(env-based: DB_HOST, DB_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD), session(name=app_session, lifetime=7200), remember_me(lifetime=90days), csrf(enabled, token_length=32), rate_limit(max_attempts=3, lockout=30min, progressive, max=24hr)
+[CONFIG] app.php | config/app.php | main app config | app_name=App, timezone(America/Chicago), debug, url(APP_URL), database(env-based: DB_HOST, DB_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD), session(name=app_session, lifetime=7200), remember_me(lifetime=90days), csrf(enabled, token_length=32), mail(MAIL_HOST/PORT/USERNAME/PASSWORD/ENCRYPTION/FROM), password_reset(token_lifetime=3600), rate_limit(max_attempts=3, lockout=30min, progressive, max=24hr)
 [CONFIG] routes.php | config/routes.php | route definitions | fluent static API | Router::get/post/put/delete with name(), middleware(), where() | groups with prefix/middleware
 [CONFIG] services.php | config/services.php | placeholder | empty file
 
@@ -124,15 +134,17 @@
 
 ## DATABASE
 
-[DATABASE] init.sql | database/init.sql | MySQL schema + seed | tables: roles, permissions, role_permissions, users, user_roles, remember_tokens, rate_limits, api_keys | seeds admin user (password: 'password'), 3 roles, 4 permissions, admin user_roles assignment
+[DATABASE] init.sql | database/init.sql | MySQL schema + seed | tables: roles, permissions, role_permissions, users, user_roles, remember_tokens, rate_limits, api_keys, password_reset_tokens | seeds admin user (password: 'password'), 3 roles, 4 permissions, admin user_roles assignment
 [DATABASE] migrations/002_roles_and_permissions.sql | database/migrations/002_roles_and_permissions.sql | adds RBAC | creates roles, permissions, role_permissions tables | ALTERs users (email, name, role_id, is_active, last_login_at) | ALTERs remember_tokens (user_id, drops username)
 [DATABASE] migrations/003_api_keys.sql | database/migrations/003_api_keys.sql | creates api_keys table | user_id FK, name, key_hash (UNIQUE), last_used_at
 [DATABASE] migrations/004_many_to_many_roles.sql | database/migrations/004_many_to_many_roles.sql | many-to-many roles | creates user_roles pivot, migrates users.role_id data, drops role_id from users, drops level from roles
+[DATABASE] migrations/005_password_reset_tokens.sql | database/migrations/005_password_reset_tokens.sql | creates password_reset_tokens table | user_id UNIQUE FK, token_hash indexed, expires_at indexed
 [DATABASE] users table | MySQL | id, username (UNIQUE), email, name, is_active, last_login_at, password_hash, created_at, updated_at
 [DATABASE] roles table | MySQL | id, name, slug (UNIQUE), description, created_at
 [DATABASE] permissions table | MySQL | id, name, slug (UNIQUE), description, created_at
 [DATABASE] role_permissions table | MySQL | role_id + permission_id (composite PK, FKs CASCADE)
 [DATABASE] user_roles table | MySQL | user_id + role_id (composite PK, FKs CASCADE) | many-to-many pivot
+[DATABASE] password_reset_tokens table | MySQL | id, user_id (UNIQUE, FK CASCADE), token_hash (indexed), expires_at, created_at | one active token per user
 [DATABASE] remember_tokens table | MySQL | id, user_id (FK CASCADE), token_hash (indexed), expires_at, created_at
 [DATABASE] rate_limits table | MySQL | id, ip_address (UNIQUE), attempts (JSON), lockout_until, lockout_count, updated_at
 [DATABASE] api_keys table | MySQL | id, user_id (FK CASCADE), name, key_hash (UNIQUE, indexed), last_used_at, created_at
@@ -169,6 +181,8 @@
 [PATTERN] Database Persistence | MySQL 8.0 | PDO singleton via Database::getConnection() | tables: users, roles, permissions, role_permissions, user_roles, remember_tokens, rate_limits, api_keys | env-based config
 [PATTERN] Error Handling | ErrorHandler registered in index.php | set_exception_handler + set_error_handler + register_shutdown_function | HttpException hierarchy (404, 403, custom status) | ValidationException redirects with errors + old input | debug mode: detailed dev page with stack trace + code snippet | production mode: branded error pages via views/errors/ | API routes (/api/*): JSON error responses | logs to error channel (404→notice, 403→warning, 500→error) | PHP warnings/notices converted to ErrorException | fatal errors caught via shutdown function
 [PATTERN] Request Logging | RequestLogMiddleware::start() in index.php | register_shutdown_function logs on every request | method, URI, status, duration_ms, IP, user_id | Logger::channel('requests') → storage/logs/requests.log
+[PATTERN] Password Reset | email-based reset flow | forgot form → validate email → generate token (SHA256, 1hr, one per user) → send email via Mailer::sendTemplate() → reset form → validate token + set password → delete token + clear remember tokens | no user enumeration (same success message regardless) | single-use tokens | CSRF on POST routes
+[PATTERN] Mail | Mailer static class | raw SMTP via stream_socket_client | STARTTLS (587) or SSL (465) | AUTH LOGIN | sendTemplate() renders PHP view with ob_start | logs to mail channel | returns false on failure (never throws) | config via app.php mail section
 [PATTERN] Security | defense in depth | CSRF tokens + rate limiting + session regeneration + output escaping + httponly cookies + .htaccess blocking + ARGON2ID hashing + timing-safe comparison + RBAC + API key hashing
 
 ## TESTING
@@ -187,6 +201,7 @@
 [TEST] Integration/Core/ValidatorUniqueTest | tests/Integration/Core/ValidatorUniqueTest.php | 4 tests | unique rule with DB
 [TEST] Integration/Models/UserTest | tests/Integration/Models/UserTest.php | 17 tests | authenticate, updatePassword, setPassword, roles, hasRole, hasPermission (multi-role)
 [TEST] Integration/Models/UserRoleSyncTest | tests/Integration/Models/UserRoleSyncTest.php | 5 tests | syncRoles: assign, reassign, multiple, clear, idempotent
+[TEST] Integration/Models/PasswordResetTokenTest | tests/Integration/Models/PasswordResetTokenTest.php | 8 tests | createToken, validate (valid/expired/invalid/inactive), deleteToken, clearForUser, token replacement (one per user)
 [TEST] Integration/Models/RememberTokenTest | tests/Integration/Models/RememberTokenTest.php | 8 tests | createToken, validate, deleteToken, clearForUser
 [TEST] Integration/Models/RoleTest | tests/Integration/Models/RoleTest.php | 8 tests | findBySlug, permissions, hasPermission, seeded roles, users(), syncPermissions()
 [TEST] Integration/Models/ApiKeyTest | tests/Integration/Models/ApiKeyTest.php | 8 tests | generate, validateKey, forUser, revoke, ownership
@@ -195,6 +210,7 @@
 [TEST] Integration/Middleware/AuthMiddlewareTest | tests/Integration/Middleware/AuthMiddlewareTest.php | 14 tests | check, setAuthenticated (multi-role), requireAuth, requireRole (membership), requirePermission, user
 [TEST] Integration/Middleware/ApiAuthMiddlewareTest | tests/Integration/Middleware/ApiAuthMiddlewareTest.php | 6 tests | verify with valid/invalid/missing header, inactive user
 [TEST] Integration/Middleware/ApiRateLimitTest | tests/Integration/Middleware/ApiRateLimitTest.php | 4 tests | check passes/fails, no api user, records attempt
+[TEST] Unit/Core/MailerTest | tests/Unit/Core/MailerTest.php | 3 tests | setConfig overrides, reset clears config, send returns false on connection failure
 [TEST] Unit/Core/ErrorHandlerTest | tests/Unit/Core/ErrorHandlerTest.php | 16 tests | HttpException status codes, dev/production pages, API JSON responses, ValidationException redirect, error-to-exception conversion, log levels (404→notice, 403→warning, 500→error), production detail suppression
 [TEST] Unit/Middleware/RequestLogMiddlewareTest | tests/Unit/Middleware/RequestLogMiddlewareTest.php | 6 tests | logs method/URI/status/duration, includes user_id when authenticated, reset clears state
 

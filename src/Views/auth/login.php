@@ -38,6 +38,10 @@ ob_start();
                 <?= Form::submit('Login', ['class' => 'btn btn-primary w-100']) ?>
             </div>
 
+            <div class="text-center mt-3">
+                <a href="/forgot-password" class="text-decoration-none small">Forgot your password?</a>
+            </div>
+
         <?= Form::close() ?>
     </div>
 </div>

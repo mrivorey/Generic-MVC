@@ -4,6 +4,7 @@ return [
     'name' => 'App',
     'timezone' => 'America/Chicago',
     'debug' => filter_var(getenv('APP_DEBUG') ?: 'true', FILTER_VALIDATE_BOOLEAN),
+    'url' => getenv('APP_URL') ?: 'http://localhost:8088',
 
     // Paths
     'paths' => [
@@ -50,6 +51,22 @@ return [
         'default_channel' => getenv('LOG_CHANNEL') ?: 'app',
         'min_level' => getenv('LOG_LEVEL') ?: 'debug',
         'channels' => ['requests' => ['min_level' => 'info']],
+    ],
+
+    // Mail
+    'mail' => [
+        'host'         => getenv('MAIL_HOST') ?: 'localhost',
+        'port'         => (int)(getenv('MAIL_PORT') ?: 587),
+        'username'     => getenv('MAIL_USERNAME') ?: '',
+        'password'     => getenv('MAIL_PASSWORD') ?: '',
+        'encryption'   => getenv('MAIL_ENCRYPTION') ?: 'tls',
+        'from_address' => getenv('MAIL_FROM_ADDRESS') ?: 'noreply@example.com',
+        'from_name'    => getenv('MAIL_FROM_NAME') ?: 'App',
+    ],
+
+    // Password Reset
+    'password_reset' => [
+        'token_lifetime' => 3600, // 1 hour
     ],
 
     // Rate Limiting (Brute Force Protection)

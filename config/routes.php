@@ -3,6 +3,7 @@
 use App\Routing\Router;
 use App\Controllers\AuthController;
 use App\Controllers\HomeController;
+use App\Controllers\PasswordResetController;
 use App\Controllers\ProfileController;
 use App\Controllers\Admin\UserController;
 use App\Controllers\Admin\RoleController;
@@ -15,6 +16,12 @@ Router::get('/', [HomeController::class, 'index'])->name('home');
 Router::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Router::post('/login', [AuthController::class, 'login'])->middleware('csrf');
 Router::get('/logout', [AuthController::class, 'logout'])->name('logout');
+
+// Password reset routes
+Router::get('/forgot-password', [PasswordResetController::class, 'showForgotForm'])->name('password.forgot');
+Router::post('/forgot-password', [PasswordResetController::class, 'sendResetLink'])->middleware('csrf');
+Router::get('/reset-password', [PasswordResetController::class, 'showResetForm'])->name('password.reset');
+Router::post('/reset-password', [PasswordResetController::class, 'resetPassword'])->middleware('csrf');
 
 // Profile routes
 Router::get('/profile', [ProfileController::class, 'show'])->name('profile')->middleware('auth');
