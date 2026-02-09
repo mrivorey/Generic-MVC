@@ -45,6 +45,13 @@ return [
         'safe_methods' => ['GET', 'HEAD', 'OPTIONS'],
     ],
 
+    // Logging
+    'logging' => [
+        'default_channel' => getenv('LOG_CHANNEL') ?: 'app',
+        'min_level' => getenv('LOG_LEVEL') ?: 'debug',
+        'channels' => [],
+    ],
+
     // Rate Limiting (Brute Force Protection)
     'rate_limit' => [
         'enabled' => true,

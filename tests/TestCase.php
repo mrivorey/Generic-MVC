@@ -5,6 +5,7 @@ namespace Tests;
 use App\Core\FileSystem;
 use App\Core\FormBuilder;
 use App\Core\Flash;
+use App\Core\Logger;
 use App\Middleware\CsrfMiddleware;
 use App\Middleware\RateLimitMiddleware;
 use App\Routing\Router;
@@ -43,6 +44,7 @@ abstract class TestCase extends BaseTestCase
         // Reset static caches
         Router::reset();
         FileSystem::reset();
+        Logger::reset();
         FormBuilder::resetState();
         CsrfMiddleware::resetConfig();
         RateLimitMiddleware::resetConfig();
