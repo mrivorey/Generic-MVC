@@ -244,6 +244,7 @@
 [TEST] Unit/Middleware/CorsMiddlewareTest | tests/Unit/Middleware/CorsMiddlewareTest.php | 12 tests | no headers without Origin, OPTIONS preflight exits, non-OPTIONS passes, rejects disallowed origin, wildcard allows any, credentials support, reset clears config
 [TEST] Integration/Core/PaginatorTest | tests/Integration/Core/PaginatorTest.php | tests Paginator with DB | correct page results, default page 1, clamps to last page, conditions filtering, order by, empty table, fromQuery
 [TEST] Integration/Core/SoftDeleteTest | tests/Integration/Core/SoftDeleteTest.php | 11 tests | delete sets deleted_at, find/findBy/where/all exclude deleted, withTrashed includes, onlyTrashed returns only deleted, flags auto-reset, restore, forceDelete, non-soft-delete model
+[TEST] Integration/SmokeTest | tests/Integration/SmokeTest.php | 8 HTTP smoke tests | homepage 200, login 200, forgot-password 200, 404 for missing, profile redirects/403, admin requires auth, security headers present, API 401 without auth | requires running Docker app container | uses curl to http://localhost:8088
 [TEST] Integration/Commands/MigrateCommandTest | tests/Integration/Commands/MigrateCommandTest.php | 4 tests | creates migrations table, runs pending migrations, skips executed migrations, reports nothing when up to date
 
 ## SESSION KEYS
