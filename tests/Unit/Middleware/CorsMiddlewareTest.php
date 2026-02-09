@@ -3,6 +3,8 @@
 namespace Tests\Unit\Middleware;
 
 use App\Middleware\CorsMiddleware;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Tests\TestCase;
 
 class CorsMiddlewareTest extends TestCase
@@ -161,10 +163,8 @@ class CorsMiddlewareTest extends TestCase
         $this->assertTrue(true, 'Empty origin string treated as no origin');
     }
 
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState disabled
-     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
     public function test_options_preflight_exits(): void
     {
         require dirname(__DIR__, 3) . '/vendor/autoload.php';
@@ -185,10 +185,8 @@ class CorsMiddlewareTest extends TestCase
         \App\Middleware\CorsMiddleware::handle();
     }
 
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState disabled
-     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
     public function test_preflight_exit_code_is_zero(): void
     {
         require dirname(__DIR__, 3) . '/vendor/autoload.php';
@@ -213,10 +211,8 @@ class CorsMiddlewareTest extends TestCase
         }
     }
 
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState disabled
-     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
     public function test_wildcard_preflight_exits(): void
     {
         require dirname(__DIR__, 3) . '/vendor/autoload.php';
@@ -237,10 +233,8 @@ class CorsMiddlewareTest extends TestCase
         \App\Middleware\CorsMiddleware::handle();
     }
 
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState disabled
-     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
     public function test_non_options_request_does_not_exit(): void
     {
         require dirname(__DIR__, 3) . '/vendor/autoload.php';
@@ -263,10 +257,8 @@ class CorsMiddlewareTest extends TestCase
         $this->assertTrue(true, 'Non-OPTIONS request completed without exit');
     }
 
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState disabled
-     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
     public function test_disallowed_origin_does_not_exit_on_options(): void
     {
         require dirname(__DIR__, 3) . '/vendor/autoload.php';
