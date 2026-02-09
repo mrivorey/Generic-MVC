@@ -3,49 +3,48 @@
 namespace App\Models;
 
 use App\Core\Database;
+use App\Core\Model;
 
-class RememberToken
+class RememberToken extends Model
 {
-    private int $lifetime;
-    private string $cookieName;
+    protected static string $table = 'remember_tokens';
+    protected static array $fillable = ['user_id', 'token_hash', 'expires_at'];
 
-    public function __construct()
+    public static function createToken(int $userId): string
     {
         $config = require dirname(__DIR__, 2) . '/config/app.php';
-        $this->lifetime = $config['remember']['lifetime'];
-        $this->cookieName = $config['remember']['cookie_name'];
-    }
+        $lifetime = $config['remember']['lifetime'];
 
-    public function create(string $username): string
-    {
         $rawToken = bin2hex(random_bytes(32));
         $tokenHash = hash('sha256', $rawToken);
-        $expiresAt = date('Y-m-d H:i:s', time() + $this->lifetime);
+        $expiresAt = date('Y-m-d H:i:s', time() + $lifetime);
 
         $pdo = Database::getConnection();
         $stmt = $pdo->prepare(
-            'INSERT INTO remember_tokens (username, token_hash, expires_at) VALUES (?, ?, ?)'
+            'INSERT INTO remember_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)'
         );
-        $stmt->execute([$username, $tokenHash, $expiresAt]);
+        $stmt->execute([$userId, $tokenHash, $expiresAt]);
 
         return $rawToken;
     }
 
-    public function validate(string $rawToken): ?string
+    public static function validate(string $rawToken): ?array
     {
         $tokenHash = hash('sha256', $rawToken);
 
         $pdo = Database::getConnection();
         $stmt = $pdo->prepare(
-            'SELECT username FROM remember_tokens WHERE token_hash = ? AND expires_at > NOW()'
+            'SELECT rt.user_id, u.username FROM remember_tokens rt
+             JOIN users u ON u.id = rt.user_id
+             WHERE rt.token_hash = ? AND rt.expires_at > NOW() AND u.is_active = 1'
         );
         $stmt->execute([$tokenHash]);
         $row = $stmt->fetch();
 
-        return $row ? $row['username'] : null;
+        return $row ?: null;
     }
 
-    public function delete(string $rawToken): void
+    public static function deleteToken(string $rawToken): void
     {
         $tokenHash = hash('sha256', $rawToken);
 
@@ -54,19 +53,28 @@ class RememberToken
         $stmt->execute([$tokenHash]);
     }
 
-    public function clearAll(): void
+    public static function clearForUser(int $userId): void
+    {
+        $pdo = Database::getConnection();
+        $stmt = $pdo->prepare('DELETE FROM remember_tokens WHERE user_id = ?');
+        $stmt->execute([$userId]);
+    }
+
+    public static function clearAll(): void
     {
         $pdo = Database::getConnection();
         $pdo->exec('DELETE FROM remember_tokens');
     }
 
-    public function getLifetime(): int
+    public static function getLifetime(): int
     {
-        return $this->lifetime;
+        $config = require dirname(__DIR__, 2) . '/config/app.php';
+        return $config['remember']['lifetime'];
     }
 
-    public function getCookieName(): string
+    public static function getCookieName(): string
     {
-        return $this->cookieName;
+        $config = require dirname(__DIR__, 2) . '/config/app.php';
+        return $config['remember']['cookie_name'];
     }
 }

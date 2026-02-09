@@ -23,4 +23,14 @@ class Database
 
         return self::$connection;
     }
+
+    public static function reset(): void
+    {
+        self::$connection = null;
+    }
+
+    public static function setConnection(\PDO $connection): void
+    {
+        self::$connection = $connection;
+    }
 }

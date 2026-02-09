@@ -30,11 +30,6 @@ return [
         'samesite' => 'Lax',
     ],
 
-    // Authentication
-    'auth' => [
-        'username' => 'admin',
-    ],
-
     // Remember Me
     'remember' => [
         'lifetime' => 7776000, // 90 days in seconds

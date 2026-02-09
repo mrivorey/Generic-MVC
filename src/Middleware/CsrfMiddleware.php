@@ -24,6 +24,8 @@ namespace App\Middleware;
  *
  * @package App\Middleware
  */
+use App\Core\ExitTrap;
+
 class CsrfMiddleware
 {
     /**
@@ -153,12 +155,11 @@ class CsrfMiddleware
     public static function verify(): void
     {
         if (!self::validate()) {
-            $_SESSION['csrf_error'] = 'Invalid or missing security token. Please try again.';
+            \App\Core\Flash::set('warning', 'Invalid or missing security token. Please try again.');
 
-            http_response_code(403);
-            header('Content-Type: text/plain');
-            echo 'Forbidden: Invalid CSRF token';
-            exit;
+            $referer = $_SERVER['HTTP_REFERER'] ?? '/';
+            header('Location: ' . $referer);
+            ExitTrap::exit();
         }
     }
 
@@ -191,5 +192,10 @@ class CsrfMiddleware
     {
         $config = self::getConfig();
         unset($_SESSION[$config['session_key']]);
+    }
+
+    public static function resetConfig(): void
+    {
+        self::$config = null;
     }
 }

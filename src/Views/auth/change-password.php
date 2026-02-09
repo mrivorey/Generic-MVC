@@ -1,4 +1,6 @@
 <?php
+use App\Core\FormBuilder as Form;
+
 $title = 'Change Password';
 $mainClass = 'container py-4';
 $showNav = true;
@@ -13,53 +15,37 @@ ob_start();
                 <h5 class="mb-0">Change Password</h5>
             </div>
             <div class="card-body">
-                <?php if (!empty($error)): ?>
-                    <div class="alert alert-danger" role="alert">
-                        <?= htmlspecialchars($error) ?>
-                    </div>
-                <?php endif; ?>
+                <?php include dirname(__DIR__) . '/partials/flash-messages.php'; ?>
 
-                <?php if (!empty($_SESSION['csrf_error'])): ?>
-                    <div class="alert alert-warning" role="alert">
-                        <?= htmlspecialchars($_SESSION['csrf_error']) ?>
-                    </div>
-                    <?php unset($_SESSION['csrf_error']); ?>
-                <?php endif; ?>
+                <?= Form::open(['action' => '/change-password']) ?>
 
-                <?php if (!empty($success)): ?>
-                    <div class="alert alert-success" role="alert">
-                        <?= htmlspecialchars($success) ?>
-                    </div>
-                <?php endif; ?>
+                    <?= Form::password('current_password', [
+                        'label' => 'Current Password',
+                        'required' => true,
+                        'autocomplete' => 'current-password',
+                    ]) ?>
 
-                <form method="POST" action="/change-password">
-                    <?= \App\Middleware\CsrfMiddleware::field() ?>
-                    <div class="mb-3">
-                        <label for="current_password" class="form-label">Current Password</label>
-                        <input type="password" class="form-control" id="current_password"
-                               name="current_password" required autocomplete="current-password">
-                    </div>
+                    <?= Form::password('new_password', [
+                        'label' => 'New Password',
+                        'required' => true,
+                        'minlength' => 8,
+                        'autocomplete' => 'new-password',
+                        'help' => 'Minimum 8 characters',
+                    ]) ?>
 
-                    <div class="mb-3">
-                        <label for="new_password" class="form-label">New Password</label>
-                        <input type="password" class="form-control" id="new_password"
-                               name="new_password" required minlength="8"
-                               autocomplete="new-password">
-                        <div class="form-text">Minimum 8 characters</div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="confirm_password" class="form-label">Confirm New Password</label>
-                        <input type="password" class="form-control" id="confirm_password"
-                               name="confirm_password" required minlength="8"
-                               autocomplete="new-password">
-                    </div>
+                    <?= Form::password('new_password_confirmation', [
+                        'label' => 'Confirm New Password',
+                        'required' => true,
+                        'minlength' => 8,
+                        'autocomplete' => 'new-password',
+                    ]) ?>
 
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary">Change Password</button>
+                        <?= Form::submit('Change Password') ?>
                         <a href="/" class="btn btn-outline-secondary">Back</a>
                     </div>
-                </form>
+
+                <?= Form::close() ?>
             </div>
         </div>
     </div>

@@ -2,6 +2,10 @@
 
 namespace App\Controllers;
 
+use App\Core\ExitTrap;
+use App\Core\Flash;
+use App\Core\Validator;
+
 abstract class BaseController
 {
     protected array $config;
@@ -20,16 +24,10 @@ abstract class BaseController
             throw new \RuntimeException("View template not found: {$template}");
         }
 
-        // Extract data to make variables available in template
         extract($data);
 
-        // Start output buffering
         ob_start();
-
-        // Include the template
         include $templatePath;
-
-        // Return the buffered content
         return ob_get_clean();
     }
 
@@ -43,7 +41,20 @@ abstract class BaseController
     protected function redirect(string $url): void
     {
         header('Location: ' . $url);
-        exit;
+        ExitTrap::exit();
+    }
+
+    protected function redirectWithErrors(string $url, Validator $validator): void
+    {
+        Flash::setOldInput($_POST);
+        $this->redirect($url);
+    }
+
+    protected function validationErrors(): array
+    {
+        $errors = $_SESSION['_validation_errors'] ?? [];
+        unset($_SESSION['_validation_errors']);
+        return $errors;
     }
 
     protected function isAuthenticated(): bool

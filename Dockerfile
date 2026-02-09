@@ -1,5 +1,8 @@
 FROM php:8.5-apache
 
+# Install system dependencies
+RUN apt-get update && apt-get install -y git unzip && rm -rf /var/lib/apt/lists/*
+
 # Install required extensions (opcache is bundled in PHP 8.5)
 RUN docker-php-ext-install pdo_mysql
 
@@ -21,8 +24,15 @@ RUN echo "session.save_path = /var/www/html/storage/sessions" >> /usr/local/etc/
 # Allow .htaccess overrides
 RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
 
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
 # Set working directory
 WORKDIR /var/www/html
+
+# Copy composer files and install dependencies
+COPY composer.json composer.lock* ./
+RUN composer install --no-interaction --no-scripts --no-autoloader 2>/dev/null || true
 
 # Expose port 8088
 EXPOSE 8088

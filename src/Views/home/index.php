@@ -5,6 +5,7 @@ ob_start();
 ?>
 
 <div class="container py-4">
+    <?php include dirname(__DIR__) . '/partials/flash-messages.php'; ?>
     <h1>Welcome</h1>
 </div>
 

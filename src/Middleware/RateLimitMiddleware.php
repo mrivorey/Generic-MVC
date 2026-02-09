@@ -216,4 +216,9 @@ class RateLimitMiddleware
         $stmt = $pdo->prepare('DELETE FROM rate_limits WHERE ip_address = ?');
         $stmt->execute([$ip]);
     }
+
+    public static function resetConfig(): void
+    {
+        self::$config = null;
+    }
 }

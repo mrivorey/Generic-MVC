@@ -4,50 +4,94 @@
 
 ## CONTROLLERS
 
-[CONTROLLER] BaseController | src/Controllers/BaseController.php | abstract base | view(), json(), redirect(), isAuthenticated(), getSessionUser(), escape() | loads config/app.php
-[CONTROLLER] AuthController | src/Controllers/AuthController.php | extends BaseController | showLogin(), login(), logout(), showChangePassword(), changePassword() | uses User, RememberToken, AuthMiddleware, CsrfMiddleware, RateLimitMiddleware
+[CONTROLLER] BaseController | src/Controllers/BaseController.php | abstract base | view(), json(), redirect(), redirectWithErrors(), validationErrors(), isAuthenticated(), getSessionUser(), escape() | loads config/app.php
+[CONTROLLER] AuthController | src/Controllers/AuthController.php | extends BaseController | showLogin(), login(), logout() | uses User, RememberToken, AuthMiddleware, CsrfMiddleware, RateLimitMiddleware, Flash
 [CONTROLLER] HomeController | src/Controllers/HomeController.php | extends BaseController | index() | public (passes auth status to view) | renders home view
+[CONTROLLER] ProfileController | src/Controllers/ProfileController.php | extends BaseController | show(), showChangePassword(), changePassword(), apiKeys(), generateApiKey(), revokeApiKey(id) | uses User, RememberToken, ApiKey, Flash, Validator
+[CONTROLLER] Admin\UserController | src/Controllers/Admin/UserController.php | extends BaseController | index(), create(), store(), edit(id), update(id), destroy(id) | CRUD for users | uses User, Role, Flash, Validator | syncRoles on create/update
+[CONTROLLER] Admin\RoleController | src/Controllers/Admin/RoleController.php | extends BaseController | index(), create(), store(), edit(id), update(id), destroy(id) | CRUD for roles | uses Role, Permission, Flash, Validator | syncPermissions on create/update | prevents admin role deletion
+[CONTROLLER] Api\ApiController | src/Controllers/Api/ApiController.php | abstract API base | success(data, meta), error(message, code, status), apiUser() | extends BaseController | overrides redirect to throw
+[CONTROLLER] Api\UserApiController | src/Controllers/Api/UserApiController.php | extends ApiController | me() | returns authenticated API user info with roles array
 
 ## CORE
 
-[CORE] Database | src/Core/Database.php | PDO singleton | getConnection() | reads config/app.php database section | ERRMODE_EXCEPTION, FETCH_ASSOC, EMULATE_PREPARES=false | MySQL via pdo_mysql
+[CORE] Database | src/Core/Database.php | PDO singleton | getConnection(), reset(), setConnection(PDO) | reads config/app.php database section | ERRMODE_EXCEPTION, FETCH_ASSOC, EMULATE_PREPARES=false | MySQL via pdo_mysql
+[CORE] ExitTrap | src/Core/ExitTrap.php | static class | enableTestMode(), disableTestMode(), exit(code) | in production calls exit(), in test mode throws ExitException
+[CORE] ExitException | src/Core/ExitException.php | extends RuntimeException | getExitCode() | thrown by ExitTrap in test mode
+[CORE] Flash | src/Core/Flash.php | static class | set(type, message), get(type), all(), has(type), setOldInput(data), old(key, default), clearOldInput() | session keys: _flash, _old_input | types: success, error, warning, info
+[CORE] Model | src/Core/Model.php | abstract base model | static methods: find(id), findBy(column, value), where(column, value), all(orderBy), create(data), update(id, data), delete(id), query(sql, bindings) | $table, $fillable | mass-assignment protection
+[CORE] Validator | src/Core/Validator.php | static factory | make(data, rules)->validate() | fails(), errors(), validated() | rules: required, string, email, min:N, max:N, numeric, integer, confirmed, unique:table,column[,except_id], in:val1,val2 | stores errors in _validation_errors session
+[CORE] FormBuilder | src/Core/FormBuilder.php | static form helper | open(attributes), close(), text(), email(), password(), textarea(), number(), hidden(), select(), checkbox(), radio(), submit() | auto CSRF, method spoofing, Bootstrap 5 markup, validation error states, old input repopulation
 
 ## MODELS
 
-[MODEL] User | src/Models/User.php | single-user auth | authenticate(username, password), updatePassword(current, new), getUsername() | MySQL users table | ARGON2ID hashing
-[MODEL] RememberToken | src/Models/RememberToken.php | remember-me tokens | create(username), validate(rawToken), delete(rawToken), clearAll() | MySQL remember_tokens table | SHA256 hash, 90-day lifetime
+[MODEL] User | src/Models/User.php | extends Model | authenticate(username, password)->?array, updatePassword(userId, current, new), setPassword(userId, new), roles(userId)->array, hasRole(userId, slug)->bool, hasPermission(userId, slug)->bool, syncRoles(userId, roleIds) | MySQL users table | ARGON2ID hashing | many-to-many roles via user_roles pivot
+[MODEL] RememberToken | src/Models/RememberToken.php | extends Model | createToken(userId), validate(rawToken)->?array, deleteToken(rawToken), clearForUser(userId), clearAll() | MySQL remember_tokens table | SHA256 hash, 90-day lifetime | user_id based
+[MODEL] Role | src/Models/Role.php | extends Model | findBySlug(slug), permissions(roleId), hasPermission(roleId, slug), users(roleId)->array, syncPermissions(roleId, permissionIds) | MySQL roles table | seeded: admin, editor, viewer
+[MODEL] Permission | src/Models/Permission.php | extends Model | findBySlug(slug) | MySQL permissions table | seeded: users.view, users.create, users.edit, users.delete
+[MODEL] ApiKey | src/Models/ApiKey.php | extends Model | generate(userId, name)->rawKey, validateKey(rawKey)->?array, forUser(userId), revoke(keyId, userId) | MySQL api_keys table | SHA256 hash, app_ prefix
 
 ## MIDDLEWARE
 
-[MIDDLEWARE] AuthMiddleware | src/Middleware/AuthMiddleware.php | static class | check(), requireAuth(), setAuthenticated(), checkRememberToken(), setRememberToken(), clearRememberCookie(), deleteRememberToken(), logout() | session keys: authenticated, username, login_time
+[MIDDLEWARE] AuthMiddleware | src/Middleware/AuthMiddleware.php | static class | check(), requireAuth(), requireRole(string ...$allowedRoles), requirePermission(slug), setAuthenticated(user array), user()->?array, checkRememberToken(), setRememberToken(userId), clearRememberCookie(), deleteRememberToken(), logout() | session keys: authenticated, user_id, username, user_roles(array), user_name, login_time
 [MIDDLEWARE] CsrfMiddleware | src/Middleware/CsrfMiddleware.php | static class | token(), field(), validate(), verify(), regenerate(), clear() | Synchronizer Token Pattern | session key: _csrf_token | 32-byte random token
 [MIDDLEWARE] RateLimitMiddleware | src/Middleware/RateLimitMiddleware.php | static class | check(ip), isLocked(ip), recordAttempt(ip), clear(ip) | MySQL rate_limits table | 3 attempts, 30min base lockout, progressive doubling, 24hr cap
+[MIDDLEWARE] ApiAuthMiddleware | src/Middleware/ApiAuthMiddleware.php | static class | verify() | reads Authorization: Bearer app_xxx header | validates API key | stores user in $_REQUEST['_api_user'] | returns JSON 401
+[MIDDLEWARE] ApiRateLimitMiddleware | src/Middleware/ApiRateLimitMiddleware.php | static class | check() | keyed by API key hash | 60 requests/minute | returns JSON 429 with Retry-After
 
 ## ROUTING
 
-[ROUTING] Router | src/Routing/Router.php | simple URL routing | __construct(routes), addRoute(method, path, handler), dispatch(method, uri), pathToPattern(path), render404() | {param} placeholders → regex | array-based route matching
+[ROUTING] Router | src/Routing/Router.php | static fluent API | get(), post(), put(), patch(), delete(), match(), resource(), group(), url(name), dispatch(), reset() | named routes, route groups with prefix/middleware, method spoofing via _method
+[ROUTING] Route | src/Routing/Route.php | route object | name(), middleware(), where(param, pattern), matches(method, uri)->?params | param constraints, regex matching
+[ROUTING] MiddlewarePipeline | src/Routing/MiddlewarePipeline.php | static class | register(alias, handler), run(middlewareList) | aliases: auth, csrf, role, permission, api_auth, api_rate_limit | supports colon params (role:admin,editor)
 
 ## ROUTES
 
-[ROUTE] GET / | config/routes.php | HomeController::index | public | renders home page
-[ROUTE] GET /login | config/routes.php | AuthController::showLogin | no auth | renders login form
-[ROUTE] POST /login | config/routes.php | AuthController::login | no auth | processes login with CSRF + rate limiting
-[ROUTE] GET /logout | config/routes.php | AuthController::logout | auth required | destroys session + tokens
-[ROUTE] GET /change-password | config/routes.php | AuthController::showChangePassword | auth required | renders password change form
-[ROUTE] POST /change-password | config/routes.php | AuthController::changePassword | auth required | updates password with CSRF
+[ROUTE] GET / | config/routes.php | HomeController::index | public | name: home
+[ROUTE] GET /login | config/routes.php | AuthController::showLogin | no auth | name: login
+[ROUTE] POST /login | config/routes.php | AuthController::login | middleware: csrf | processes login with rate limiting
+[ROUTE] GET /logout | config/routes.php | AuthController::logout | name: logout
+[ROUTE] GET /profile | config/routes.php | ProfileController::show | middleware: auth | name: profile
+[ROUTE] GET /change-password | config/routes.php | ProfileController::showChangePassword | middleware: auth | name: password.change
+[ROUTE] POST /change-password | config/routes.php | ProfileController::changePassword | middleware: auth, csrf
+[ROUTE] GET /profile/api-keys | config/routes.php | ProfileController::apiKeys | middleware: auth | name: profile.api-keys
+[ROUTE] POST /profile/api-keys | config/routes.php | ProfileController::generateApiKey | middleware: auth, csrf | name: profile.api-keys.generate
+[ROUTE] POST /profile/api-keys/{id}/revoke | config/routes.php | ProfileController::revokeApiKey | middleware: auth, csrf
+[ROUTE] GET /admin/users | config/routes.php | Admin\UserController::index | middleware: auth, role:admin | name: admin.users.index
+[ROUTE] GET /admin/users/create | config/routes.php | Admin\UserController::create | middleware: auth, role:admin
+[ROUTE] POST /admin/users | config/routes.php | Admin\UserController::store | middleware: auth, role:admin, csrf
+[ROUTE] GET /admin/users/{id}/edit | config/routes.php | Admin\UserController::edit | middleware: auth, role:admin
+[ROUTE] PUT /admin/users/{id} | config/routes.php | Admin\UserController::update | middleware: auth, role:admin, csrf | method spoofed via _method
+[ROUTE] POST /admin/users/{id}/delete | config/routes.php | Admin\UserController::destroy | middleware: auth, role:admin, csrf
+[ROUTE] GET /admin/roles | config/routes.php | Admin\RoleController::index | middleware: auth, role:admin | name: admin.roles.index
+[ROUTE] GET /admin/roles/create | config/routes.php | Admin\RoleController::create | middleware: auth, role:admin
+[ROUTE] POST /admin/roles | config/routes.php | Admin\RoleController::store | middleware: auth, role:admin, csrf
+[ROUTE] GET /admin/roles/{id}/edit | config/routes.php | Admin\RoleController::edit | middleware: auth, role:admin
+[ROUTE] PUT /admin/roles/{id} | config/routes.php | Admin\RoleController::update | middleware: auth, role:admin, csrf | method spoofed via _method
+[ROUTE] POST /admin/roles/{id}/delete | config/routes.php | Admin\RoleController::destroy | middleware: auth, role:admin, csrf
+[ROUTE] GET /api/v1/user | config/routes.php | Api\UserApiController::me | middleware: api_auth, api_rate_limit | name: api.user
 
 ## VIEWS & TEMPLATES
 
-[VIEW] layouts/main.php | src/Views/layouts/main.php | base HTML layout | vars: $title, $mainClass, $showNav, $content, $scripts | Bootstrap 5 dark theme, conditional navbar
-[VIEW] auth/login.php | src/Views/auth/login.php | login form | vars: $error | fields: username, password, remember_me | includes CSRF field
-[VIEW] auth/change-password.php | src/Views/auth/change-password.php | password change form | vars: $error, $success, $username | fields: current_password, new_password, confirm_password | min 8 chars
+[VIEW] layouts/main.php | src/Views/layouts/main.php | base HTML layout | vars: $title, $mainClass, $showNav, $content, $scripts | Bootstrap 5 dark theme, conditional navbar, flash messages
+[VIEW] auth/login.php | src/Views/auth/login.php | login form | uses FormBuilder | fields: username, password, remember_me | flash messages
+[VIEW] auth/change-password.php | src/Views/auth/change-password.php | password change form | uses FormBuilder | fields: current_password, new_password, new_password_confirmation
 [VIEW] home/index.php | src/Views/home/index.php | home page | public | welcome page with conditional auth
-[PARTIAL] partials/navbar.php | src/Views/partials/navbar.php | top navigation bar | user menu with change password and logout links
+[VIEW] profile/show.php | src/Views/profile/show.php | user profile | displays user info, roles (badges), dates | link to change password
+[VIEW] profile/api-keys.php | src/Views/profile/api-keys.php | API key management | list keys, generate form, revoke buttons | shows new key once
+[VIEW] admin/users/index.php | src/Views/admin/users/index.php | user list table | shows all users with role badges, status, actions | delete with confirmation
+[VIEW] admin/users/create.php | src/Views/admin/users/create.php | create user form | uses FormBuilder | fields: username, email, name, password, role_ids[] checkboxes, is_active
+[VIEW] admin/users/edit.php | src/Views/admin/users/edit.php | edit user form | uses FormBuilder | fields: username, email, name, password(optional), role_ids[] checkboxes, is_active | method spoofed PUT
+[VIEW] admin/roles/index.php | src/Views/admin/roles/index.php | role list table | shows roles with user counts, edit/delete buttons | admin role protected
+[VIEW] admin/roles/create.php | src/Views/admin/roles/create.php | create role form | uses FormBuilder | fields: name, slug, description, permissions[] checkboxes
+[VIEW] admin/roles/edit.php | src/Views/admin/roles/edit.php | edit role form | uses FormBuilder | fields: name, slug, description, permissions[] checkboxes | method spoofed PUT
+[PARTIAL] partials/navbar.php | src/Views/partials/navbar.php | top navigation bar | admin dropdown (conditional on user_roles containing admin), profile link, API keys link, change password, logout | Manage Users + Manage Roles links
+[PARTIAL] partials/flash-messages.php | src/Views/partials/flash-messages.php | renders flash messages | Bootstrap 5 dismissible alerts | type mapping: success→success, error→danger, warning→warning, info→info
 
 ## CONFIG
 
-[CONFIG] app.php | config/app.php | main app config | app_name=App, timezone(America/Chicago), debug, database(env-based: DB_HOST, DB_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD), session(name=app_session, lifetime=7200), auth(username=admin), remember_me(lifetime=90days), csrf(enabled, token_length=32), rate_limit(max_attempts=3, lockout=30min, progressive, max=24hr)
-[CONFIG] routes.php | config/routes.php | route definitions | array of [METHOD, path, [Controller::class, action]] | 6 routes total
+[CONFIG] app.php | config/app.php | main app config | app_name=App, timezone(America/Chicago), debug, database(env-based: DB_HOST, DB_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD), session(name=app_session, lifetime=7200), remember_me(lifetime=90days), csrf(enabled, token_length=32), rate_limit(max_attempts=3, lockout=30min, progressive, max=24hr)
+[CONFIG] routes.php | config/routes.php | route definitions | fluent static API | Router::get/post/put/delete with name(), middleware(), where() | groups with prefix/middleware
 [CONFIG] services.php | config/services.php | placeholder | empty file
 
 ## FRONTEND
@@ -58,15 +102,23 @@
 
 ## ENTRY POINT
 
-[ENTRY] index.php | public/index.php | front controller | loads autoloader → config → timezone → session → remember-me check → routes → Router::dispatch() | session config: file-based, 2hr lifetime, httponly, samesite=lax
+[ENTRY] index.php | public/index.php | front controller | loads autoloader → config → timezone → session → remember-me check → require routes.php → Router::dispatch() | session config: file-based, 2hr lifetime, httponly, samesite=lax
 [ENTRY] .htaccess | public/.htaccess | Apache rewrite rules | all requests → index.php | blocks: .env, .pwd, .json, .lock, .md | no directory listing
 
 ## DATABASE
 
-[DATABASE] init.sql | database/init.sql | MySQL schema + seed | tables: users, remember_tokens, rate_limits | seeds admin user (password: 'password')
-[DATABASE] users table | MySQL | id, username (UNIQUE), password_hash, created_at, updated_at
-[DATABASE] remember_tokens table | MySQL | id, username, token_hash (indexed), expires_at, created_at
+[DATABASE] init.sql | database/init.sql | MySQL schema + seed | tables: roles, permissions, role_permissions, users, user_roles, remember_tokens, rate_limits, api_keys | seeds admin user (password: 'password'), 3 roles, 4 permissions, admin user_roles assignment
+[DATABASE] migrations/002_roles_and_permissions.sql | database/migrations/002_roles_and_permissions.sql | adds RBAC | creates roles, permissions, role_permissions tables | ALTERs users (email, name, role_id, is_active, last_login_at) | ALTERs remember_tokens (user_id, drops username)
+[DATABASE] migrations/003_api_keys.sql | database/migrations/003_api_keys.sql | creates api_keys table | user_id FK, name, key_hash (UNIQUE), last_used_at
+[DATABASE] migrations/004_many_to_many_roles.sql | database/migrations/004_many_to_many_roles.sql | many-to-many roles | creates user_roles pivot, migrates users.role_id data, drops role_id from users, drops level from roles
+[DATABASE] users table | MySQL | id, username (UNIQUE), email, name, is_active, last_login_at, password_hash, created_at, updated_at
+[DATABASE] roles table | MySQL | id, name, slug (UNIQUE), description, created_at
+[DATABASE] permissions table | MySQL | id, name, slug (UNIQUE), description, created_at
+[DATABASE] role_permissions table | MySQL | role_id + permission_id (composite PK, FKs CASCADE)
+[DATABASE] user_roles table | MySQL | user_id + role_id (composite PK, FKs CASCADE) | many-to-many pivot
+[DATABASE] remember_tokens table | MySQL | id, user_id (FK CASCADE), token_hash (indexed), expires_at, created_at
 [DATABASE] rate_limits table | MySQL | id, ip_address (UNIQUE), attempts (JSON), lockout_until, lockout_count, updated_at
+[DATABASE] api_keys table | MySQL | id, user_id (FK CASCADE), name, key_hash (UNIQUE, indexed), last_used_at, created_at
 
 ## STORAGE
 
@@ -78,20 +130,52 @@
 
 ## DOCKER
 
-[DOCKER] Dockerfile | Dockerfile | php:8.5-apache | installs opcache + pdo_mysql | enables mod_rewrite | port 8088 | docroot /var/www/html/public | creates storage/sessions | www-data owns storage/
+[DOCKER] Dockerfile | Dockerfile | php:8.5-apache | installs git, unzip, Composer, pdo_mysql | enables mod_rewrite | port 8088 | docroot /var/www/html/public | creates storage/sessions | www-data owns storage/
 [DOCKER] docker-compose.yml | docker-compose.yml | services: app (port 8088), mysql (port 3306, healthcheck), adminer (port 8080) | volume: mysql_data | env: DB_HOST, DB_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD | app depends_on mysql healthy
 
 ## PATTERNS
 
-[PATTERN] Auth Flow | session-based | login → User::authenticate() → AuthMiddleware::setAuthenticated() → session_regenerate_id() → optional RememberToken::create() | logout → session_destroy() + token deletion
-[PATTERN] CSRF | Synchronizer Token | CsrfMiddleware::field() in forms → CsrfMiddleware::verify() on POST → hash_equals() comparison → 403 on failure | regenerated after login
+[PATTERN] Auth Flow | multi-user session-based | login → User::authenticate() returns user array → AuthMiddleware::setAuthenticated(user) → session_regenerate_id() → optional RememberToken::createToken(userId) | logout → session_destroy() + token deletion
+[PATTERN] RBAC | many-to-many roles | users ↔ roles via user_roles pivot | permissions via role_permissions pivot | AuthMiddleware::requireRole(...$allowedRoles) checks membership | AuthMiddleware::requirePermission(slug) checks union of all role permissions | admin bypass (admin role has all permissions implicitly)
+[PATTERN] CSRF | Synchronizer Token | CsrfMiddleware::field() in forms or FormBuilder auto-includes | CsrfMiddleware::verify() on POST → hash_equals() comparison → 403 on failure | regenerated after login
 [PATTERN] Rate Limiting | IP-based progressive lockout | check() before login → recordAttempt() on failure → lockout doubles each violation (30m→60m→120m...) → clear() on success | capped at 24hr | MySQL storage
+[PATTERN] API Auth | Bearer token | Authorization: Bearer app_xxx header → ApiAuthMiddleware::verify() → ApiKey::validateKey() → user data in $_REQUEST['_api_user'] | JSON 401 on failure
+[PATTERN] API Rate Limiting | key-based | 60 requests/minute per API key | ApiRateLimitMiddleware::check() | JSON 429 with Retry-After header
 [PATTERN] Template Rendering | output buffering | BaseController::view() → extract($data) → ob_start() → include template → ob_get_clean() | layout wraps content
+[PATTERN] Form Builder | FormBuilder static class | Form::open() auto-includes CSRF + method spoofing | field methods generate Bootstrap 5 markup | auto validation error states (is-invalid + invalid-feedback) | old input repopulation via Flash::old()
+[PATTERN] Flash Messages | session-based one-redirect | Flash::set(type, message) → stored in $_SESSION['_flash'] → rendered by partials/flash-messages.php as Bootstrap alerts → auto-cleared after display
+[PATTERN] Validation | Validator::make(data, rules)->validate() | per-field errors stored in $_SESSION['_validation_errors'] | used by FormBuilder for error display | rules: required, string, email, min, max, confirmed, unique, in
+[PATTERN] Base Model | abstract Model class | static CRUD methods | $table + $fillable for mass-assignment protection | uses Database::getConnection() | returns plain arrays
 [PATTERN] Password Hashing | ARGON2ID | password_hash(PASSWORD_ARGON2ID) → stored in MySQL users table → password_verify() on login
-[PATTERN] Database Persistence | MySQL 8.0 | PDO singleton via Database::getConnection() | users, remember_tokens, rate_limits tables | env-based config
-[PATTERN] Security | defense in depth | CSRF tokens + rate limiting + session regeneration + output escaping + httponly cookies + .htaccess blocking + ARGON2ID hashing + timing-safe comparison
+[PATTERN] Database Persistence | MySQL 8.0 | PDO singleton via Database::getConnection() | tables: users, roles, permissions, role_permissions, user_roles, remember_tokens, rate_limits, api_keys | env-based config
+[PATTERN] Security | defense in depth | CSRF tokens + rate limiting + session regeneration + output escaping + httponly cookies + .htaccess blocking + ARGON2ID hashing + timing-safe comparison + RBAC + API key hashing
+
+## TESTING
+
+[TEST] phpunit.xml | phpunit.xml | PHPUnit 11 config | suites: Unit, Integration | env vars for test DB (app_test) | bootstrap: tests/bootstrap.php
+[TEST] bootstrap.php | tests/bootstrap.php | test bootstrap | loads autoloader, enables ExitTrap test mode, starts session
+[TEST] TestCase | tests/TestCase.php | base test class | saves/restores superglobals ($_SESSION, $_SERVER, $_POST, $_REQUEST, $_COOKIE) | resets Router, FormBuilder, CsrfMiddleware, RateLimitMiddleware
+[TEST] DatabaseTestCase | tests/DatabaseTestCase.php | extends TestCase | connects to app_test DB | wraps each test in transaction + rollback | createTestUser(overrides, roles=['viewer']), getRoleId() helpers
+[TEST] Unit/Core/FlashTest | tests/Unit/Core/FlashTest.php | 12 tests | set/get, multiple messages, all(), has(), old input
+[TEST] Unit/Core/ValidatorTest | tests/Unit/Core/ValidatorTest.php | 25 tests | all rules except unique | fieldLabel humanization
+[TEST] Unit/Core/FormBuilderTest | tests/Unit/Core/FormBuilderTest.php | 20 tests | open/close, field types, CSRF, method spoofing, validation errors, old input
+[TEST] Unit/Routing/RouteTest | tests/Unit/Routing/RouteTest.php | 15 tests | matches(), where(), name(), middleware(), setPrefix(), addMiddleware()
+[TEST] Unit/Routing/RouterTest | tests/Unit/Routing/RouterTest.php | 18 tests | HTTP methods, named routes, url(), groups, resource(), dispatch(), method spoofing
+[TEST] Unit/Routing/MiddlewarePipelineTest | tests/Unit/Routing/MiddlewarePipelineTest.php | 5 tests | run(), register(), parameters, ordering
+[TEST] Integration/Core/ModelTest | tests/Integration/Core/ModelTest.php | 13 tests | CRUD via Role model | find, findBy, where, all, create, update, delete, query
+[TEST] Integration/Core/ValidatorUniqueTest | tests/Integration/Core/ValidatorUniqueTest.php | 4 tests | unique rule with DB
+[TEST] Integration/Models/UserTest | tests/Integration/Models/UserTest.php | 17 tests | authenticate, updatePassword, setPassword, roles, hasRole, hasPermission (multi-role)
+[TEST] Integration/Models/UserRoleSyncTest | tests/Integration/Models/UserRoleSyncTest.php | 5 tests | syncRoles: assign, reassign, multiple, clear, idempotent
+[TEST] Integration/Models/RememberTokenTest | tests/Integration/Models/RememberTokenTest.php | 8 tests | createToken, validate, deleteToken, clearForUser
+[TEST] Integration/Models/RoleTest | tests/Integration/Models/RoleTest.php | 8 tests | findBySlug, permissions, hasPermission, seeded roles, users(), syncPermissions()
+[TEST] Integration/Models/ApiKeyTest | tests/Integration/Models/ApiKeyTest.php | 8 tests | generate, validateKey, forUser, revoke, ownership
+[TEST] Integration/Middleware/RateLimitTest | tests/Integration/Middleware/RateLimitTest.php | 10 tests | check, recordAttempt, lockout, progressive, clear, disabled
+[TEST] Integration/Middleware/CsrfTest | tests/Integration/Middleware/CsrfTest.php | 10 tests | token, field, validate, verify, regenerate, clear
+[TEST] Integration/Middleware/AuthMiddlewareTest | tests/Integration/Middleware/AuthMiddlewareTest.php | 14 tests | check, setAuthenticated (multi-role), requireAuth, requireRole (membership), requirePermission, user
+[TEST] Integration/Middleware/ApiAuthMiddlewareTest | tests/Integration/Middleware/ApiAuthMiddlewareTest.php | 6 tests | verify with valid/invalid/missing header, inactive user
+[TEST] Integration/Middleware/ApiRateLimitTest | tests/Integration/Middleware/ApiRateLimitTest.php | 4 tests | check passes/fails, no api user, records attempt
 
 ## SESSION KEYS
 
-[CONST] Session Keys | authenticated(bool), username(string), login_time(int), _csrf_token(string), login_error(string), password_error(string), password_success(string), csrf_error(string), rate_limit_error(string)
+[CONST] Session Keys | authenticated(bool), user_id(int), username(string), user_roles(array of slugs), user_name(string), login_time(int), _csrf_token(string), _flash(array), _old_input(array), _validation_errors(array), _new_api_key(string|temp)
 [CONST] Cookie Names | app_session (session), remember_token (remember-me)

@@ -3,58 +3,123 @@
 namespace App\Models;
 
 use App\Core\Database;
+use App\Core\Model;
 
-class User
+class User extends Model
 {
-    private string $username;
+    protected static string $table = 'users';
+    protected static array $fillable = ['username', 'email', 'name', 'is_active', 'password_hash'];
 
-    public function __construct()
+    public static function authenticate(string $username, string $password): ?array
     {
-        $config = require dirname(__DIR__, 2) . '/config/app.php';
-        $this->username = $config['auth']['username'];
+        $user = self::findBy('username', $username);
+        if (!$user) {
+            return null;
+        }
+
+        if (!$user['is_active']) {
+            return null;
+        }
+
+        if (!password_verify($password, $user['password_hash'])) {
+            return null;
+        }
+
+        // Update last_login_at
+        $pdo = Database::getConnection();
+        $stmt = $pdo->prepare('UPDATE users SET last_login_at = NOW() WHERE id = ?');
+        $stmt->execute([$user['id']]);
+
+        return $user;
     }
 
-    public function authenticate(string $username, string $password): bool
+    public static function updatePassword(int $userId, string $currentPassword, string $newPassword): bool
     {
-        if ($username !== $this->username) {
+        $user = self::find($userId);
+        if (!$user) {
             return false;
         }
 
-        $pdo = Database::getConnection();
-        $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE username = ?');
-        $stmt->execute([$username]);
-        $row = $stmt->fetch();
-
-        if (!$row) {
-            return false;
-        }
-
-        return password_verify($password, $row['password_hash']);
-    }
-
-    public function updatePassword(string $currentPassword, string $newPassword): bool
-    {
-        $pdo = Database::getConnection();
-        $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE username = ?');
-        $stmt->execute([$this->username]);
-        $row = $stmt->fetch();
-
-        if (!$row) {
-            return false;
-        }
-
-        if (!password_verify($currentPassword, $row['password_hash'])) {
+        if (!password_verify($currentPassword, $user['password_hash'])) {
             return false;
         }
 
         $newHash = password_hash($newPassword, PASSWORD_ARGON2ID);
-
-        $update = $pdo->prepare('UPDATE users SET password_hash = ? WHERE username = ?');
-        return $update->execute([$newHash, $this->username]);
+        $pdo = Database::getConnection();
+        $stmt = $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+        return $stmt->execute([$newHash, $userId]);
     }
 
-    public function getUsername(): string
+    public static function setPassword(int $userId, string $newPassword): bool
     {
-        return $this->username;
+        $newHash = password_hash($newPassword, PASSWORD_ARGON2ID);
+        $pdo = Database::getConnection();
+        $stmt = $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+        return $stmt->execute([$newHash, $userId]);
+    }
+
+    public static function roles(int $userId): array
+    {
+        $pdo = Database::getConnection();
+        $stmt = $pdo->prepare(
+            'SELECT r.* FROM roles r
+             JOIN user_roles ur ON ur.role_id = r.id
+             WHERE ur.user_id = ?'
+        );
+        $stmt->execute([$userId]);
+        return $stmt->fetchAll();
+    }
+
+    public static function hasRole(int $userId, string $slug): bool
+    {
+        $roles = self::roles($userId);
+        foreach ($roles as $role) {
+            if ($role['slug'] === $slug) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static function hasPermission(int $userId, string $slug): bool
+    {
+        $roles = self::roles($userId);
+        if (empty($roles)) {
+            return false;
+        }
+
+        // Admin has all permissions
+        foreach ($roles as $role) {
+            if ($role['slug'] === 'admin') {
+                return true;
+            }
+        }
+
+        // Check union of permissions from all roles
+        $roleIds = array_column($roles, 'id');
+        $placeholders = implode(',', array_fill(0, count($roleIds), '?'));
+        $pdo = Database::getConnection();
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM role_permissions rp
+             JOIN permissions p ON p.id = rp.permission_id
+             WHERE rp.role_id IN ({$placeholders}) AND p.slug = ?"
+        );
+        $stmt->execute([...$roleIds, $slug]);
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    public static function syncRoles(int $userId, array $roleIds): void
+    {
+        $pdo = Database::getConnection();
+
+        $stmt = $pdo->prepare('DELETE FROM user_roles WHERE user_id = ?');
+        $stmt->execute([$userId]);
+
+        if (!empty($roleIds)) {
+            $stmt = $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)');
+            foreach ($roleIds as $roleId) {
+                $stmt->execute([$userId, (int) $roleId]);
+            }
+        }
     }
 }

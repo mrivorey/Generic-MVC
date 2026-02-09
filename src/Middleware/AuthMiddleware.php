@@ -2,6 +2,9 @@
 
 namespace App\Middleware;
 
+use App\Core\ExitTrap;
+use App\Models\User;
+use App\Models\Role;
 use App\Models\RememberToken;
 
 class AuthMiddleware
@@ -15,49 +18,91 @@ class AuthMiddleware
     {
         if (!self::check()) {
             header('Location: /login');
-            exit;
+            ExitTrap::exit();
         }
     }
 
-    public static function setAuthenticated(string $username): void
+    public static function requireRole(string ...$allowedRoles): void
+    {
+        self::requireAuth();
+        $userRoles = $_SESSION['user_roles'] ?? [];
+        if (empty(array_intersect($userRoles, $allowedRoles))) {
+            http_response_code(403);
+            echo '<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body><h1>403 - Access Denied</h1><p>You do not have permission to access this page.</p></body></html>';
+            ExitTrap::exit();
+        }
+    }
+
+    public static function requirePermission(string $slug): void
+    {
+        self::requireAuth();
+        $userId = $_SESSION['user_id'] ?? null;
+        if (!$userId || !User::hasPermission($userId, $slug)) {
+            http_response_code(403);
+            echo '<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body><h1>403 - Access Denied</h1><p>You do not have permission to perform this action.</p></body></html>';
+            ExitTrap::exit();
+        }
+    }
+
+    public static function setAuthenticated(array $user): void
     {
         $_SESSION['authenticated'] = true;
-        $_SESSION['username'] = $username;
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['username'] = $user['username'];
+
+        $roles = User::roles($user['id']);
+        $_SESSION['user_roles'] = array_column($roles, 'slug');
+        $_SESSION['user_name'] = $user['name'] ?? $user['username'];
         $_SESSION['login_time'] = time();
 
-        // Regenerate session ID to prevent session fixation
         session_regenerate_id(true);
+    }
+
+    public static function user(): ?array
+    {
+        if (!self::check()) {
+            return null;
+        }
+        return [
+            'id' => $_SESSION['user_id'] ?? null,
+            'username' => $_SESSION['username'] ?? null,
+            'roles' => $_SESSION['user_roles'] ?? [],
+            'name' => $_SESSION['user_name'] ?? null,
+        ];
     }
 
     public static function checkRememberToken(): void
     {
-        $rememberToken = new RememberToken();
-        $cookieName = $rememberToken->getCookieName();
+        $cookieName = RememberToken::getCookieName();
 
         if (!isset($_COOKIE[$cookieName])) {
             return;
         }
 
         $rawToken = $_COOKIE[$cookieName];
-        $username = $rememberToken->validate($rawToken);
+        $result = RememberToken::validate($rawToken);
 
-        if ($username !== null) {
-            self::setAuthenticated($username);
+        if ($result !== null) {
+            $user = User::find($result['user_id']);
+            if ($user && $user['is_active']) {
+                self::setAuthenticated($user);
+            } else {
+                self::clearRememberCookie();
+            }
         } else {
             self::clearRememberCookie();
         }
     }
 
-    public static function setRememberToken(string $username): void
+    public static function setRememberToken(int $userId): void
     {
-        $rememberToken = new RememberToken();
-        $rawToken = $rememberToken->create($username);
+        $rawToken = RememberToken::createToken($userId);
 
         setcookie(
-            $rememberToken->getCookieName(),
+            RememberToken::getCookieName(),
             $rawToken,
             [
-                'expires' => time() + $rememberToken->getLifetime(),
+                'expires' => time() + RememberToken::getLifetime(),
                 'path' => '/',
                 'httponly' => true,
                 'samesite' => 'Lax',
@@ -67,8 +112,7 @@ class AuthMiddleware
 
     public static function clearRememberCookie(): void
     {
-        $rememberToken = new RememberToken();
-        $cookieName = $rememberToken->getCookieName();
+        $cookieName = RememberToken::getCookieName();
 
         setcookie(
             $cookieName,
@@ -84,11 +128,10 @@ class AuthMiddleware
 
     public static function deleteRememberToken(): void
     {
-        $rememberToken = new RememberToken();
-        $cookieName = $rememberToken->getCookieName();
+        $cookieName = RememberToken::getCookieName();
 
         if (isset($_COOKIE[$cookieName])) {
-            $rememberToken->delete($_COOKIE[$cookieName]);
+            RememberToken::deleteToken($_COOKIE[$cookieName]);
         }
 
         self::clearRememberCookie();
@@ -100,7 +143,6 @@ class AuthMiddleware
 
         $_SESSION = [];
 
-        // Delete session cookie
         if (ini_get('session.use_cookies')) {
             $params = session_get_cookie_params();
             setcookie(

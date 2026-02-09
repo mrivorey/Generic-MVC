@@ -26,15 +26,6 @@ if (!isset($_SESSION['authenticated']) || $_SESSION['authenticated'] !== true) {
     \App\Middleware\AuthMiddleware::checkRememberToken();
 }
 
-// Load routes
-$routes = require dirname(__DIR__) . '/config/routes.php';
-
-// Create router and dispatch
-$router = new App\Routing\Router($routes);
-
-// Get request method and URI
-$method = $_SERVER['REQUEST_METHOD'];
-$uri = $_SERVER['REQUEST_URI'];
-
-// Dispatch the request
-echo $router->dispatch($method, $uri);
+// Load routes and dispatch
+require dirname(__DIR__) . '/config/routes.php';
+echo \App\Routing\Router::dispatch();
